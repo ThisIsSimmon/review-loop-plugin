@@ -157,7 +157,7 @@ bun install
 bun run check
 ```
 
-`check` は型検査・テスト・ビルドを行い、ビルド結果がコミット済みの `dist/` と同じことまで確かめる。ソースは `src/`（`bin/` が各 script の入口、`commands/` が各コマンド、`lib/` が共通部分）、Codex に渡す文面とスキーマは `src/assets/`。`src/e2e.test.ts` はビルド済みの `dist/` を Node で実行し、偽の `codex` で 1 往復を通す。
+`check` は `plugin.json` と `marketplace.json` の `version` が一致しているかを確かめたうえで型検査・テスト・ビルドを行い、ビルド結果がコミット済みの `dist/` と同じことまで確かめる。ソースは `src/`（`bin/` が各 script の入口、`commands/` が各コマンド、`lib/` が共通部分）、Codex に渡す文面とスキーマは `src/assets/`。`src/e2e.test.ts` はビルド済みの `dist/` を Node で実行し、偽の `codex` で 1 往復を通す。
 
 手元のリポジトリをマーケットプレイスとして試すには:
 

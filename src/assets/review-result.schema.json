@@ -1,0 +1,48 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "review-loop Codex review result",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["verdict", "summary", "findings", "tests_run", "unverified"],
+	"properties": {
+		"verdict": { "type": "string", "enum": ["approve", "needs_attention"] },
+		"summary": { "type": "string" },
+		"findings": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"severity",
+					"scope",
+					"title",
+					"file",
+					"line_start",
+					"line_end",
+					"body",
+					"recommendation",
+					"evidence"
+				],
+				"properties": {
+					"severity": {
+						"type": "string",
+						"enum": ["critical", "important", "minor"]
+					},
+					"scope": { "type": "string", "enum": ["change", "pre_existing"] },
+					"title": { "type": "string" },
+					"file": { "type": "string" },
+					"line_start": { "type": "integer" },
+					"line_end": { "type": "integer" },
+					"body": { "type": "string" },
+					"recommendation": { "type": "string" },
+					"evidence": {
+						"type": "string",
+						"enum": ["source", "measured", "inferred"]
+					}
+				}
+			}
+		},
+		"tests_run": { "type": "array", "items": { "type": "string" } },
+		"unverified": { "type": "array", "items": { "type": "string" } }
+	}
+}

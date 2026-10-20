@@ -1,0 +1,19 @@
+{
+	"name": "review-loop",
+	"owner": {
+		"name": "ThisIsSimmon",
+		"url": "https://github.com/ThisIsSimmon"
+	},
+	"metadata": {
+		"description": "Claude が実装し、Codex がレビューし、対応すべき指摘が無くなるまで往復させる Claude Code プラグイン"
+	},
+	"plugins": [
+		{
+			"name": "review-loop",
+			"source": "./plugins/review-loop",
+			"description": "実装 → Codex レビュー → 精査・修正 → 差分のみの再レビューを、対応すべき指摘が無くなるまで往復させ、コミットの確認まで行う。Stop フックで途中で止まらないようにする",
+			"version": "0.1.0",
+			"category": "development"
+		}
+	]
+}

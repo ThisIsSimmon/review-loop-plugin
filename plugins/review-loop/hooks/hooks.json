@@ -1,0 +1,16 @@
+{
+	"description": "review-loop の Run が途中のままターンを終えようとしたら、次の工程を示して続行させる",
+	"hooks": {
+		"Stop": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/stop-guard.mjs\"",
+						"timeout": 20
+					}
+				]
+			}
+		]
+	}
+}

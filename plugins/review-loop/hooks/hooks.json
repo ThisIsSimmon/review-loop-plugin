@@ -6,7 +6,7 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/stop-guard.mjs\"",
+						"command": "bun \"${CLAUDE_PLUGIN_ROOT}/dist/stop-guard.mjs\"",
 						"timeout": 20
 					}
 				]

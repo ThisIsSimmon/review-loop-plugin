@@ -1,7 +1,7 @@
 /**
  * 作業ツリーをスナップショットし、Codex に読み取り専用でレビューさせ、所見を ID 付きで保存・表示する。
  *
- *   node dist/request-review.mjs [--run <run-id>] [--request <依頼書のパス>] [--model <model>] [--effort <effort>] [--timeout-minutes <n>] [--max-rounds <n>]
+ *   bun dist/request-review.mjs [--run <run-id>] [--request <依頼書のパス>] [--model <model>] [--effort <effort>] [--timeout-minutes <n>] [--max-rounds <n>]
  *
  * 1 回目は依頼書（既定 `.tmp/review-loop/<run>/1.request.md`）が必要。2 回目以降は前回のスナップショットからの
  * 差分と前回の対応表を Codex に渡す。失敗したら工程を review_failed にして止める（曖昧な失敗で勝手に再実行しない）。

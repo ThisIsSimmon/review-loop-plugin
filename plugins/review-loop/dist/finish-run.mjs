@@ -1,10 +1,9 @@
+// @bun
 // src/lib/fs.ts
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 var isNotFoundError = (error) => error instanceof Error && ("code" in error) && error.code === "ENOENT";
 var readTextIfExists = async (path) => {
   try {
-    return await readFile(path, "utf8");
+    return await Bun.file(path).text();
   } catch (error) {
     if (isNotFoundError(error))
       return null;
@@ -12,68 +11,51 @@ var readTextIfExists = async (path) => {
   }
 };
 var writeText = async (path, text) => {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, text, "utf8");
+  await Bun.write(path, text);
 };
 var writeJson = (path, data) => writeText(path, `${JSON.stringify(data, null, "\t")}
 `);
 
 // src/lib/git.ts
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 
 // src/lib/process.ts
-import { spawn } from "node:child_process";
-var runProcess = (command, args, options) => new Promise((resolve, reject) => {
-  const child = spawn(command, args, {
+var runProcess = async (command, args, options) => {
+  const child = Bun.spawn([command, ...args], {
     cwd: options.cwd,
     env: options.env ?? process.env,
-    stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"]
+    stdin: options.input === undefined ? "ignore" : new TextEncoder().encode(options.input),
+    stdout: "pipe",
+    stderr: "pipe"
   });
-  const stdout = [];
-  const stderr = [];
   let timedOut = false;
-  let settled = false;
-  let timer;
-  let spawned = Promise.resolve();
-  const settle = (fn) => {
-    if (settled)
-      return;
-    settled = true;
-    if (timer)
-      clearTimeout(timer);
-    fn();
-  };
-  child.stdout?.on("data", (chunk) => stdout.push(chunk));
-  child.stderr?.on("data", (chunk) => stderr.push(chunk));
-  child.on("error", (error) => settle(() => reject(error)));
-  child.on("close", (code) => {
-    spawned.then(() => settle(() => resolve({
-      exitCode: code,
-      timedOut,
-      stdout: Buffer.concat(stdout).toString("utf8"),
-      stderr: Buffer.concat(stderr).toString("utf8")
-    })), () => {});
-  });
-  if (options.input !== undefined && child.stdin) {
-    child.stdin.on("error", () => {});
-    child.stdin.end(options.input, "utf8");
+  const timer = options.timeoutMs === undefined ? undefined : setTimeout(() => {
+    timedOut = true;
+    child.kill();
+  }, options.timeoutMs);
+  try {
+    const outputs = Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited
+    ]);
+    if (options.onSpawn) {
+      try {
+        await options.onSpawn(child.pid);
+      } catch (error) {
+        child.kill();
+        outputs.catch(() => {});
+        throw error;
+      }
+    }
+    const [stdout, stderr] = await outputs;
+    return { exitCode: child.exitCode, timedOut, stdout, stderr };
+  } finally {
+    clearTimeout(timer);
   }
-  if (options.timeoutMs !== undefined) {
-    timer = setTimeout(() => {
-      timedOut = true;
-      child.kill();
-    }, options.timeoutMs);
-  }
-  if (options.onSpawn && child.pid !== undefined) {
-    spawned = options.onSpawn(child.pid);
-    spawned.catch((error) => {
-      child.kill();
-      settle(() => reject(error));
-    });
-  }
-});
+};
 
 // src/lib/git.ts
 var GIT_LOCAL_ENV_VARS = new Set([
@@ -108,7 +90,7 @@ var createGitRunner = (cwd, baseEnv = {}) => async (args, env = {}) => {
 var runGitOrThrow = async (git, args, env) => {
   const result = await git(args, env);
   if (result.exitCode !== 0) {
-    throw new Error(`git ${args.join(" ")} が失敗しました（exit ${result.exitCode}）: ${result.stderr.trim()}`);
+    throw new Error(`git ${args.join(" ")} \u304C\u5931\u6557\u3057\u307E\u3057\u305F\uFF08exit ${result.exitCode}\uFF09: ${result.stderr.trim()}`);
   }
   return result.stdout;
 };
@@ -137,7 +119,7 @@ var hasDiff = async (git, from, to) => {
     return false;
   if (result.exitCode === 1)
     return true;
-  throw new Error(`git diff --quiet ${from} ${to} が失敗しました（exit ${result.exitCode}）: ${result.stderr.trim()}`);
+  throw new Error(`git diff --quiet ${from} ${to} \u304C\u5931\u6557\u3057\u307E\u3057\u305F\uFF08exit ${result.exitCode}\uFF09: ${result.stderr.trim()}`);
 };
 var getDiffStat = async (git, from, to) => (await runGitOrThrow(git, ["diff", "--stat", from, to])).trimEnd();
 var revParse = async (git, ref) => (await runGitOrThrow(git, ["rev-parse", "--verify", ref])).trim();
@@ -157,7 +139,7 @@ var readTreeFile = async (git, tree, path) => {
     return result.stdout;
   if (result.exitCode === 128)
     return null;
-  throw new Error(`git cat-file blob ${tree}:${path} が失敗しました（exit ${result.exitCode}）: ${result.stderr.trim()}`);
+  throw new Error(`git cat-file blob ${tree}:${path} \u304C\u5931\u6557\u3057\u307E\u3057\u305F\uFF08exit ${result.exitCode}\uFF09: ${result.stderr.trim()}`);
 };
 var isIgnored = async (git, path) => {
   const result = await git(["check-ignore", "-q", "--no-index", path]);
@@ -165,12 +147,12 @@ var isIgnored = async (git, path) => {
     return true;
   if (result.exitCode === 1)
     return false;
-  throw new Error(`git check-ignore ${path} が失敗しました（exit ${result.exitCode}）: ${result.stderr.trim()}`);
+  throw new Error(`git check-ignore ${path} \u304C\u5931\u6557\u3057\u307E\u3057\u305F\uFF08exit ${result.exitCode}\uFF09: ${result.stderr.trim()}`);
 };
 
 // src/lib/state.ts
-import { readdir } from "node:fs/promises";
-import { isAbsolute, join as join3 } from "node:path";
+import { readdir } from "fs/promises";
+import { isAbsolute, join as join3 } from "path";
 
 // node_modules/valibot/dist/index.mjs
 var store$4;
@@ -874,10 +856,10 @@ function safeParse(schema, input, config$1) {
 }
 
 // src/lib/config.ts
-import { join as join2 } from "node:path";
+import { join as join2 } from "path";
 
 // src/lib/util.ts
-import { dirname as dirname2 } from "node:path";
+import { dirname } from "path";
 var errorMessage = (error) => error instanceof Error ? error.message : String(error);
 var formatIssues = (issues) => issues.map((issue) => {
   const path = getDotPath(issue);
@@ -888,19 +870,19 @@ var parseJsonWith = (schema, text, label) => {
   try {
     data = JSON.parse(text);
   } catch (error) {
-    throw new Error(`${label} を JSON として読めません: ${errorMessage(error)}`);
+    throw new Error(`${label} \u3092 JSON \u3068\u3057\u3066\u8AAD\u3081\u307E\u305B\u3093: ${errorMessage(error)}`);
   }
   const result = safeParse(schema, data);
   if (!result.success) {
-    throw new Error(`${label} の形式が不正です: ${formatIssues(result.issues)}`);
+    throw new Error(`${label} \u306E\u5F62\u5F0F\u304C\u4E0D\u6B63\u3067\u3059: ${formatIssues(result.issues)}`);
   }
   return result.output;
 };
 var scriptCommand = (name) => {
   const entry = process.argv[1];
-  const distDir = entry?.endsWith(".mjs") === true ? dirname2(entry) : "${CLAUDE_PLUGIN_ROOT}/dist";
+  const distDir = entry?.endsWith(".mjs") === true ? dirname(entry) : "${CLAUDE_PLUGIN_ROOT}/dist";
   const path = `${distDir}/${name}.mjs`;
-  return /^[\w@%+=:,./-]+$/.test(path) ? `node ${path}` : `node '${path.replaceAll("'", "'\\''")}'`;
+  return /^[\w@%+=:,./-]+$/.test(path) ? `bun ${path}` : `bun '${path.replaceAll("'", "'\\''")}'`;
 };
 var parseFlags = (args, spec) => {
   const values = new Map;
@@ -917,7 +899,7 @@ var parseFlags = (args, spec) => {
     }
     if (!spec.valueFlags.includes(flag)) {
       throw new Error(`${spec.usage}
-不明な引数: ${flag}`);
+\u4E0D\u660E\u306A\u5F15\u6570: ${flag}`);
     }
     const value = args[index + 1];
     if (value === undefined || value.startsWith("--") || values.has(flag)) {
@@ -932,7 +914,7 @@ var parsePositiveInteger = (value, label) => {
   if (value === undefined)
     return;
   if (!/^\d+$/.test(value) || Number(value) < 1) {
-    throw new Error(`${label} は 1 以上の整数で指定してください: ${value}`);
+    throw new Error(`${label} \u306F 1 \u4EE5\u4E0A\u306E\u6574\u6570\u3067\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044: ${value}`);
   }
   return Number(value);
 };
@@ -943,7 +925,7 @@ var parseBooleanValue = (value, label) => {
     return true;
   if (value === "false")
     return false;
-  throw new Error(`${label} は true か false で指定してください: ${value}`);
+  throw new Error(`${label} \u306F true \u304B false \u3067\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044: ${value}`);
 };
 var runMain = async (main) => {
   try {
@@ -969,7 +951,7 @@ var DEFAULT_CONVENTION_FILES = [
   "CLAUDE.md",
   ".claude/CLAUDE.md"
 ];
-var RepoRelativePathSchema = pipe(string(), minLength(1), check((path) => !path.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(path) && !path.split(/[\\/]/).includes(".."), "リポジトリルートからの相対パスで、.. を含まない形にしてください"));
+var RepoRelativePathSchema = pipe(string(), minLength(1), check((path) => !path.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(path) && !path.split(/[\\/]/).includes(".."), "\u30EA\u30DD\u30B8\u30C8\u30EA\u30EB\u30FC\u30C8\u304B\u3089\u306E\u76F8\u5BFE\u30D1\u30B9\u3067\u3001.. \u3092\u542B\u307E\u306A\u3044\u5F62\u306B\u3057\u3066\u304F\u3060\u3055\u3044"));
 var NonEmptyStringSchema = pipe(string(), minLength(1));
 var ReviewLoopConfigSchema = object({
   model: nullable(NonEmptyStringSchema),
@@ -1002,7 +984,7 @@ var ProjectConfigFileSchema = strictObject({
 var applyConfigOverrides = (fileConfig, overrides) => {
   const parsedFile = safeParse(ProjectConfigFileSchema, fileConfig);
   if (!parsedFile.success || Array.isArray(fileConfig)) {
-    throw new Error(`${PROJECT_CONFIG_PATH} の形式が不正です: ${parsedFile.success ? "JSON のオブジェクトにしてください" : formatIssues(parsedFile.issues)}`);
+    throw new Error(`${PROJECT_CONFIG_PATH} \u306E\u5F62\u5F0F\u304C\u4E0D\u6B63\u3067\u3059: ${parsedFile.success ? "JSON \u306E\u30AA\u30D6\u30B8\u30A7\u30AF\u30C8\u306B\u3057\u3066\u304F\u3060\u3055\u3044" : formatIssues(parsedFile.issues)}`);
   }
   const { $schema: _, ...fromFile } = parsedFile.output;
   const defined = Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined));
@@ -1012,7 +994,7 @@ var applyConfigOverrides = (fileConfig, overrides) => {
     ...defined
   });
   if (!result.success) {
-    throw new Error(`review-loop の設定が不正です: ${formatIssues(result.issues)}`);
+    throw new Error(`review-loop \u306E\u8A2D\u5B9A\u304C\u4E0D\u6B63\u3067\u3059: ${formatIssues(result.issues)}`);
   }
   return result.output;
 };
@@ -1023,7 +1005,7 @@ var loadConfig = async (repoRoot, overrides = {}) => {
     try {
       data = JSON.parse(text);
     } catch (error) {
-      throw new Error(`${PROJECT_CONFIG_PATH} を JSON として読めません: ${errorMessage(error)}`);
+      throw new Error(`${PROJECT_CONFIG_PATH} \u3092 JSON \u3068\u3057\u3066\u8AAD\u3081\u307E\u305B\u3093: ${errorMessage(error)}`);
     }
   }
   return applyConfigOverrides(data, overrides);
@@ -1039,9 +1021,9 @@ var resolveConventionFiles = async (config, exists) => {
   return found;
 };
 var describeConfig = (config) => [
-  `- 設定: モデル ${config.model ?? "Codex 既定"} / effort ${config.reasoningEffort ?? "Codex 既定"} / 最大 ${config.maxRounds} ラウンド / autoCommit ${config.autoCommit} / 打ち切り ${config.timeoutMinutes} 分`,
-  `- lint: ${config.lintCommand ?? "未設定（規約ファイルに従う）"} / テスト: ${config.testCommand ?? "未設定（規約ファイルに従う）"}`,
-  `- 範囲外の記録先: ${config.outOfScopeFile}`
+  `- \u8A2D\u5B9A: \u30E2\u30C7\u30EB ${config.model ?? "Codex \u65E2\u5B9A"} / effort ${config.reasoningEffort ?? "Codex \u65E2\u5B9A"} / \u6700\u5927 ${config.maxRounds} \u30E9\u30A6\u30F3\u30C9 / autoCommit ${config.autoCommit} / \u6253\u3061\u5207\u308A ${config.timeoutMinutes} \u5206`,
+  `- lint: ${config.lintCommand ?? "\u672A\u8A2D\u5B9A\uFF08\u898F\u7D04\u30D5\u30A1\u30A4\u30EB\u306B\u5F93\u3046\uFF09"} / \u30C6\u30B9\u30C8: ${config.testCommand ?? "\u672A\u8A2D\u5B9A\uFF08\u898F\u7D04\u30D5\u30A1\u30A4\u30EB\u306B\u5F93\u3046\uFF09"}`,
+  `- \u7BC4\u56F2\u5916\u306E\u8A18\u9332\u5148: ${config.outOfScopeFile}`
 ];
 
 // src/lib/state.ts
@@ -1061,16 +1043,16 @@ var RUN_PHASES = [
   "aborted"
 ];
 var PHASE_LABELS = {
-  implementing: "実装中",
-  reviewing: "Codex のレビュー待ち",
-  triaging: "所見の精査待ち",
-  fixing: "指摘への対応中",
-  ready_to_finish: "コミットの準備待ち",
-  awaiting_confirmation: "コミットの確認待ち",
-  review_failed: "レビューの失敗",
-  max_rounds: "ラウンド上限に到達",
-  done: "完了",
-  aborted: "中止"
+  implementing: "\u5B9F\u88C5\u4E2D",
+  reviewing: "Codex \u306E\u30EC\u30D3\u30E5\u30FC\u5F85\u3061",
+  triaging: "\u6240\u898B\u306E\u7CBE\u67FB\u5F85\u3061",
+  fixing: "\u6307\u6458\u3078\u306E\u5BFE\u5FDC\u4E2D",
+  ready_to_finish: "\u30B3\u30DF\u30C3\u30C8\u306E\u6E96\u5099\u5F85\u3061",
+  awaiting_confirmation: "\u30B3\u30DF\u30C3\u30C8\u306E\u78BA\u8A8D\u5F85\u3061",
+  review_failed: "\u30EC\u30D3\u30E5\u30FC\u306E\u5931\u6557",
+  max_rounds: "\u30E9\u30A6\u30F3\u30C9\u4E0A\u9650\u306B\u5230\u9054",
+  done: "\u5B8C\u4E86",
+  aborted: "\u4E2D\u6B62"
 };
 var STOPPABLE_PHASES = new Set([
   "awaiting_confirmation",
@@ -1131,12 +1113,12 @@ var ensureWorkDir = async (workDir) => {
 };
 var readRunState = async (runId, workDir) => {
   if (!RUN_ID_PATTERN.test(runId)) {
-    throw new Error(`Run ID の形式が不正です（YYYY-MM-DD.HHmmss）: ${runId}`);
+    throw new Error(`Run ID \u306E\u5F62\u5F0F\u304C\u4E0D\u6B63\u3067\u3059\uFF08YYYY-MM-DD.HHmmss\uFF09: ${runId}`);
   }
   const text = await readTextIfExists(runFilePath(workDir, runId, STATE_FILE_NAME));
   const display = runFileDisplayPath(runId, STATE_FILE_NAME);
   if (text === null) {
-    throw new Error(`Run ${runId} の状態ファイルがありません: ${display}`);
+    throw new Error(`Run ${runId} \u306E\u72B6\u614B\u30D5\u30A1\u30A4\u30EB\u304C\u3042\u308A\u307E\u305B\u3093: ${display}`);
   }
   return parseJsonWith(RunStateSchema, text, display);
 };
@@ -1168,7 +1150,7 @@ var listRunStates = async (workDir) => {
     try {
       const state = parseJsonWith(RunStateSchema, text, path);
       if (state.runId !== entry.name)
-        throw new Error("Run ID の不一致");
+        throw new Error("Run ID \u306E\u4E0D\u4E00\u81F4");
       listing.states.push(state);
     } catch {
       listing.invalid.push(runFileDisplayPath(entry.name, STATE_FILE_NAME));
@@ -1184,7 +1166,7 @@ var resolveRunState = async (runId, workDir) => {
   }
   const { states, invalid } = await listRunStates(workDir);
   if (invalid.length > 0) {
-    throw new Error(`読めない状態ファイルがあります（${invalid.join(", ")}）。進行中の Run を見落とさないよう、--run <run-id> を明示するか、ファイルを直すか退避してください`);
+    throw new Error(`\u8AAD\u3081\u306A\u3044\u72B6\u614B\u30D5\u30A1\u30A4\u30EB\u304C\u3042\u308A\u307E\u3059\uFF08${invalid.join(", ")}\uFF09\u3002\u9032\u884C\u4E2D\u306E Run \u3092\u898B\u843D\u3068\u3055\u306A\u3044\u3088\u3046\u3001--run <run-id> \u3092\u660E\u793A\u3059\u308B\u304B\u3001\u30D5\u30A1\u30A4\u30EB\u3092\u76F4\u3059\u304B\u9000\u907F\u3057\u3066\u304F\u3060\u3055\u3044`);
   }
   const active = findActiveRuns(states);
   const only = active[0];
@@ -1192,23 +1174,23 @@ var resolveRunState = async (runId, workDir) => {
     return only;
   }
   if (active.length === 0) {
-    throw new Error(`進行中の Run がありません。${scriptCommand("start-run")} で開始するか、--run <run-id> を指定してください`);
+    throw new Error(`\u9032\u884C\u4E2D\u306E Run \u304C\u3042\u308A\u307E\u305B\u3093\u3002${scriptCommand("start-run")} \u3067\u958B\u59CB\u3059\u308B\u304B\u3001--run <run-id> \u3092\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044`);
   }
-  throw new Error(`進行中の Run が複数あります（${active.map((state) => state.runId).join(", ")}）。--run <run-id> で指定してください`);
+  throw new Error(`\u9032\u884C\u4E2D\u306E Run \u304C\u8907\u6570\u3042\u308A\u307E\u3059\uFF08${active.map((state) => state.runId).join(", ")}\uFF09\u3002--run <run-id> \u3067\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044`);
 };
 var parseReasoningEffort = (value) => {
   if (value === undefined)
     return;
   const result = safeParse(picklist(REASONING_EFFORTS), value);
   if (!result.success) {
-    throw new Error(`--effort は ${REASONING_EFFORTS.join(" | ")} のいずれかで指定してください: ${value}`);
+    throw new Error(`--effort \u306F ${REASONING_EFFORTS.join(" | ")} \u306E\u3044\u305A\u308C\u304B\u3067\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044: ${value}`);
   }
   return result.output;
 };
 var resolveWorkspace = async (cwd = process.cwd()) => {
   const root = await findRepoRoot(cwd);
   if (root === null) {
-    throw new Error(`git リポジトリの中で実行してください（現在のディレクトリ: ${cwd}）`);
+    throw new Error(`git \u30EA\u30DD\u30B8\u30C8\u30EA\u306E\u4E2D\u3067\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\uFF08\u73FE\u5728\u306E\u30C7\u30A3\u30EC\u30AF\u30C8\u30EA: ${cwd}\uFF09`);
   }
   return workspaceFor(root);
 };
@@ -1224,13 +1206,13 @@ var validateCommitMessage = (message) => {
 `);
   const subject = lines[0]?.trim() ?? "";
   if (subject === "") {
-    problems.push("件名（1 行目）が空です");
+    problems.push("\u4EF6\u540D\uFF081 \u884C\u76EE\uFF09\u304C\u7A7A\u3067\u3059");
   }
   if (subject.length > SUBJECT_MAX_LENGTH) {
-    problems.push(`件名が ${SUBJECT_MAX_LENGTH} 文字を超えています（${subject.length} 文字）`);
+    problems.push(`\u4EF6\u540D\u304C ${SUBJECT_MAX_LENGTH} \u6587\u5B57\u3092\u8D85\u3048\u3066\u3044\u307E\u3059\uFF08${subject.length} \u6587\u5B57\uFF09`);
   }
   if (lines.length > 1 && lines[1]?.trim() !== "") {
-    problems.push("件名と本文の間に空行が必要です");
+    problems.push("\u4EF6\u540D\u3068\u672C\u6587\u306E\u9593\u306B\u7A7A\u884C\u304C\u5FC5\u8981\u3067\u3059");
   }
   return problems;
 };
@@ -1239,19 +1221,19 @@ var isAppendOnlyChange = (before, after) => after.length > before.length && afte
 var checkFinishable = (input) => {
   const canFinish = input.phase === "ready_to_finish" || input.phase === "awaiting_confirmation" && input.commit;
   if (!canFinish)
-    return `Run ${input.runId} は「${PHASE_LABELS[input.phase]}」（${input.phase}）のため締められません。対応すべき所見が無くなった（ready_to_finish）後に実行してください`;
+    return `Run ${input.runId} \u306F\u300C${PHASE_LABELS[input.phase]}\u300D\uFF08${input.phase}\uFF09\u306E\u305F\u3081\u7DE0\u3081\u3089\u308C\u307E\u305B\u3093\u3002\u5BFE\u5FDC\u3059\u3079\u304D\u6240\u898B\u304C\u7121\u304F\u306A\u3063\u305F\uFF08ready_to_finish\uFF09\u5F8C\u306B\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044`;
   if (input.commit && !input.autoCommit && input.phase !== "awaiting_confirmation")
-    return "autoCommit=false の Run は確認待ちを経ずにコミットできません。先に --commit 無しで実行し、依頼者の承認を得てください";
+    return "autoCommit=false \u306E Run \u306F\u78BA\u8A8D\u5F85\u3061\u3092\u7D4C\u305A\u306B\u30B3\u30DF\u30C3\u30C8\u3067\u304D\u307E\u305B\u3093\u3002\u5148\u306B --commit \u7121\u3057\u3067\u5B9F\u884C\u3057\u3001\u4F9D\u983C\u8005\u306E\u627F\u8A8D\u3092\u5F97\u3066\u304F\u3060\u3055\u3044";
   return null;
 };
 var stageReviewedTree = async (git, tree) => {
   await runGitOrThrow(git, ["add", "-A"]);
   const stagedTree = await writeIndexTree(git);
   if (stagedTree !== tree) {
-    throw new Error(`ステージした内容（${stagedTree.slice(0, 12)}）がレビュー済みのツリー（${tree.slice(0, 12)}）と一致しないため、コミットを中止しました。git add -f で追加された無視ファイルなど、スナップショットに含まれない内容が index にあります。git status で確かめて index から外し、再実行してください（git add -A は実行済みです）`);
+    throw new Error(`\u30B9\u30C6\u30FC\u30B8\u3057\u305F\u5185\u5BB9\uFF08${stagedTree.slice(0, 12)}\uFF09\u304C\u30EC\u30D3\u30E5\u30FC\u6E08\u307F\u306E\u30C4\u30EA\u30FC\uFF08${tree.slice(0, 12)}\uFF09\u3068\u4E00\u81F4\u3057\u306A\u3044\u305F\u3081\u3001\u30B3\u30DF\u30C3\u30C8\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F\u3002git add -f \u3067\u8FFD\u52A0\u3055\u308C\u305F\u7121\u8996\u30D5\u30A1\u30A4\u30EB\u306A\u3069\u3001\u30B9\u30CA\u30C3\u30D7\u30B7\u30E7\u30C3\u30C8\u306B\u542B\u307E\u308C\u306A\u3044\u5185\u5BB9\u304C index \u306B\u3042\u308A\u307E\u3059\u3002git status \u3067\u78BA\u304B\u3081\u3066 index \u304B\u3089\u5916\u3057\u3001\u518D\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\uFF08git add -A \u306F\u5B9F\u884C\u6E08\u307F\u3067\u3059\uFF09`);
   }
 };
-var describePushState = (upstream, headAfter) => upstream.exitCode !== 0 ? "upstream が未設定のため push の確認はできません" : upstream.stdout.trim() === headAfter ? "push 済み（upstream が HEAD と一致）" : `upstream（${upstream.stdout.trim().slice(0, 12)}）が HEAD と一致しません。push されていない可能性があります。git status -sb で確かめてください`;
+var describePushState = (upstream, headAfter) => upstream.exitCode !== 0 ? "upstream \u304C\u672A\u8A2D\u5B9A\u306E\u305F\u3081 push \u306E\u78BA\u8A8D\u306F\u3067\u304D\u307E\u305B\u3093" : upstream.stdout.trim() === headAfter ? "push \u6E08\u307F\uFF08upstream \u304C HEAD \u3068\u4E00\u81F4\uFF09" : `upstream\uFF08${upstream.stdout.trim().slice(0, 12)}\uFF09\u304C HEAD \u3068\u4E00\u81F4\u3057\u307E\u305B\u3093\u3002push \u3055\u308C\u3066\u3044\u306A\u3044\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\u3002git status -sb \u3067\u78BA\u304B\u3081\u3066\u304F\u3060\u3055\u3044`;
 var main = async (args) => {
   const { values, switches } = parseFlags(args, {
     valueFlags: ["--run", "--message-file"],
@@ -1264,10 +1246,10 @@ var main = async (args) => {
     if (switches.has("--commit"))
       throw new Error(usage());
     if (TERMINAL_PHASES.has(state.phase)) {
-      throw new Error(`Run ${state.runId} は既に「${PHASE_LABELS[state.phase]}」です`);
+      throw new Error(`Run ${state.runId} \u306F\u65E2\u306B\u300C${PHASE_LABELS[state.phase]}\u300D\u3067\u3059`);
     }
     await writeRunState({ ...state, phase: "aborted" }, workDir);
-    console.log(`Run ${state.runId} を中止しました。作業ツリーはそのままです（${runFileDisplayPath(state.runId, "")} の証跡も残ります）`);
+    console.log(`Run ${state.runId} \u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F\u3002\u4F5C\u696D\u30C4\u30EA\u30FC\u306F\u305D\u306E\u307E\u307E\u3067\u3059\uFF08${runFileDisplayPath(state.runId, "")} \u306E\u8A3C\u8DE1\u3082\u6B8B\u308A\u307E\u3059\uFF09`);
     return;
   }
   const commit = switches.has("--commit");
@@ -1284,12 +1266,12 @@ var main = async (args) => {
   const messagePath = messageArg === undefined ? runFilePath(workDir, state.runId, messageName) : resolveRepoPath(root, messageArg);
   const message = await readTextIfExists(messagePath);
   if (message === null) {
-    throw new Error(`コミットメッセージがありません: ${messagePath}。review-loop スキルの「コミットメッセージの書き方」に従って書き、${runFileDisplayPath(state.runId, messageName)} に保存してください`);
+    throw new Error(`\u30B3\u30DF\u30C3\u30C8\u30E1\u30C3\u30BB\u30FC\u30B8\u304C\u3042\u308A\u307E\u305B\u3093: ${messagePath}\u3002review-loop \u30B9\u30AD\u30EB\u306E\u300C\u30B3\u30DF\u30C3\u30C8\u30E1\u30C3\u30BB\u30FC\u30B8\u306E\u66F8\u304D\u65B9\u300D\u306B\u5F93\u3063\u3066\u66F8\u304D\u3001${runFileDisplayPath(state.runId, messageName)} \u306B\u4FDD\u5B58\u3057\u3066\u304F\u3060\u3055\u3044`);
   }
   const problems = validateCommitMessage(message);
   if (problems.length > 0) {
     throw new Error([
-      "コミットメッセージに問題があります:",
+      "\u30B3\u30DF\u30C3\u30C8\u30E1\u30C3\u30BB\u30FC\u30B8\u306B\u554F\u984C\u304C\u3042\u308A\u307E\u3059:",
       ...problems.map((p) => `- ${p}`)
     ].join(`
 `));
@@ -1298,41 +1280,41 @@ var main = async (args) => {
   const git = createGitRunner(root);
   const reviewedTree = state.snapshots[String(state.round)];
   if (!reviewedTree) {
-    throw new Error(`ラウンド ${state.round} のスナップショットが状態ファイルにありません`);
+    throw new Error(`\u30E9\u30A6\u30F3\u30C9 ${state.round} \u306E\u30B9\u30CA\u30C3\u30D7\u30B7\u30E7\u30C3\u30C8\u304C\u72B6\u614B\u30D5\u30A1\u30A4\u30EB\u306B\u3042\u308A\u307E\u305B\u3093`);
   }
   const tree = await snapshotWorkingTree(git);
   let reviewNote;
   if (tree === reviewedTree) {
-    reviewNote = "レビュー済みの内容と作業ツリーは一致しています。";
+    reviewNote = "\u30EC\u30D3\u30E5\u30FC\u6E08\u307F\u306E\u5185\u5BB9\u3068\u4F5C\u696D\u30C4\u30EA\u30FC\u306F\u4E00\u81F4\u3057\u3066\u3044\u307E\u3059\u3002";
   } else {
     const changedPaths = await listChangedPaths(git, reviewedTree, tree);
     if (!isOnlyOutOfScopeRecordChange(changedPaths, outOfScopeFile)) {
-      throw new Error(`レビュー後に作業ツリーが変わっています（${changedPaths.join(", ")}）。${scriptCommand("request-review")} --run ${state.runId} で変更分を再レビューしてください`);
+      throw new Error(`\u30EC\u30D3\u30E5\u30FC\u5F8C\u306B\u4F5C\u696D\u30C4\u30EA\u30FC\u304C\u5909\u308F\u3063\u3066\u3044\u307E\u3059\uFF08${changedPaths.join(", ")}\uFF09\u3002${scriptCommand("request-review")} --run ${state.runId} \u3067\u5909\u66F4\u5206\u3092\u518D\u30EC\u30D3\u30E5\u30FC\u3057\u3066\u304F\u3060\u3055\u3044`);
     }
     const before = await readTreeFile(git, reviewedTree, outOfScopeFile) ?? "";
     const after = await readTreeFile(git, tree, outOfScopeFile);
     if (after === null || !isAppendOnlyChange(before, after)) {
-      throw new Error(`${outOfScopeFile} がレビュー後に追記以外の形で変わっています（削除、または既存の内容の書き換え）。${scriptCommand("request-review")} --run ${state.runId} で変更分を再レビューしてください`);
+      throw new Error(`${outOfScopeFile} \u304C\u30EC\u30D3\u30E5\u30FC\u5F8C\u306B\u8FFD\u8A18\u4EE5\u5916\u306E\u5F62\u3067\u5909\u308F\u3063\u3066\u3044\u307E\u3059\uFF08\u524A\u9664\u3001\u307E\u305F\u306F\u65E2\u5B58\u306E\u5185\u5BB9\u306E\u66F8\u304D\u63DB\u3048\uFF09\u3002${scriptCommand("request-review")} --run ${state.runId} \u3067\u5909\u66F4\u5206\u3092\u518D\u30EC\u30D3\u30E5\u30FC\u3057\u3066\u304F\u3060\u3055\u3044`);
     }
-    reviewNote = `レビュー後の変更は ${outOfScopeFile} の末尾への追記だけなので、レビュー済みとして扱います。`;
+    reviewNote = `\u30EC\u30D3\u30E5\u30FC\u5F8C\u306E\u5909\u66F4\u306F ${outOfScopeFile} \u306E\u672B\u5C3E\u3078\u306E\u8FFD\u8A18\u3060\u3051\u306A\u306E\u3067\u3001\u30EC\u30D3\u30E5\u30FC\u6E08\u307F\u3068\u3057\u3066\u6271\u3044\u307E\u3059\u3002`;
   }
   if (!commit) {
     await writeRunState({ ...state, phase: "awaiting_confirmation" }, workDir);
     console.log([
-      `Run ${state.runId}: ${reviewNote}コミットの確認待ちにしました。`,
+      `Run ${state.runId}: ${reviewNote}\u30B3\u30DF\u30C3\u30C8\u306E\u78BA\u8A8D\u5F85\u3061\u306B\u3057\u307E\u3057\u305F\u3002`,
       "",
-      "### コミットメッセージ",
+      "### \u30B3\u30DF\u30C3\u30C8\u30E1\u30C3\u30BB\u30FC\u30B8",
       "```",
       message.trimEnd(),
       "```",
       "",
-      "### 変更ファイル（git status --short）",
+      "### \u5909\u66F4\u30D5\u30A1\u30A4\u30EB\uFF08git status --short\uFF09",
       await getStatusShort(git),
       "",
-      "### 差分の統計（HEAD との比較）",
+      "### \u5DEE\u5206\u306E\u7D71\u8A08\uFF08HEAD \u3068\u306E\u6BD4\u8F03\uFF09",
       await getDiffStat(git, "HEAD", tree),
       "",
-      state.config.autoCommit ? `autoCommit=true のため、続けて ${scriptCommand("finish-run")} --run ${state.runId} --commit を実行してください。` : `上の内容を応答の本文で依頼者に見せ、承認を選択肢（AskUserQuestion の「コミットする」「コミットしない」）で取ってから、${scriptCommand("finish-run")} --run ${state.runId} --commit を実行してください（選択肢を出せない環境では文章で尋ね、承認待ちでターンを終えてよいです）。`
+      state.config.autoCommit ? `autoCommit=true \u306E\u305F\u3081\u3001\u7D9A\u3051\u3066 ${scriptCommand("finish-run")} --run ${state.runId} --commit \u3092\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002` : `\u4E0A\u306E\u5185\u5BB9\u3092\u5FDC\u7B54\u306E\u672C\u6587\u3067\u4F9D\u983C\u8005\u306B\u898B\u305B\u3001\u627F\u8A8D\u3092\u9078\u629E\u80A2\uFF08AskUserQuestion \u306E\u300C\u30B3\u30DF\u30C3\u30C8\u3059\u308B\u300D\u300C\u30B3\u30DF\u30C3\u30C8\u3057\u306A\u3044\u300D\uFF09\u3067\u53D6\u3063\u3066\u304B\u3089\u3001${scriptCommand("finish-run")} --run ${state.runId} --commit \u3092\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\uFF08\u9078\u629E\u80A2\u3092\u51FA\u305B\u306A\u3044\u74B0\u5883\u3067\u306F\u6587\u7AE0\u3067\u5C0B\u306D\u3001\u627F\u8A8D\u5F85\u3061\u3067\u30BF\u30FC\u30F3\u3092\u7D42\u3048\u3066\u3088\u3044\u3067\u3059\uFF09\u3002`
     ].join(`
 `));
     return;
@@ -1344,21 +1326,21 @@ var main = async (args) => {
   if (commitResult.exitCode !== 0) {
     await writeRunState({
       ...state,
-      lastError: `git commit が失敗しました（exit ${commitResult.exitCode}）`
+      lastError: `git commit \u304C\u5931\u6557\u3057\u307E\u3057\u305F\uFF08exit ${commitResult.exitCode}\uFF09`
     }, workDir);
-    throw new Error(`git commit が失敗しました（exit ${commitResult.exitCode}）。pre-commit フック等の出力:
+    throw new Error(`git commit \u304C\u5931\u6557\u3057\u307E\u3057\u305F\uFF08exit ${commitResult.exitCode}\uFF09\u3002pre-commit \u30D5\u30C3\u30AF\u7B49\u306E\u51FA\u529B:
 ${hookOutput}`);
   }
   const headAfter = await revParse(git, "HEAD");
   if (headAfter === headBefore) {
-    throw new Error("git commit は終了しましたが、新しいコミットが作られていません");
+    throw new Error("git commit \u306F\u7D42\u4E86\u3057\u307E\u3057\u305F\u304C\u3001\u65B0\u3057\u3044\u30B3\u30DF\u30C3\u30C8\u304C\u4F5C\u3089\u308C\u3066\u3044\u307E\u305B\u3093");
   }
   const pushNote = state.config.checkPushAfterCommit ? describePushState(await git(["rev-parse", "--verify", "--quiet", "@{u}"]), headAfter) : null;
   await writeRunState({ ...state, phase: "done", commitSha: headAfter, lastError: null }, workDir);
   console.log([
-    `Run ${state.runId} を完了しました。コミット ${headAfter.slice(0, 12)}`,
+    `Run ${state.runId} \u3092\u5B8C\u4E86\u3057\u307E\u3057\u305F\u3002\u30B3\u30DF\u30C3\u30C8 ${headAfter.slice(0, 12)}`,
     ...pushNote === null ? [] : [`- push: ${pushNote}`],
-    "- git commit の出力:",
+    "- git commit \u306E\u51FA\u529B:",
     ...hookOutput.split(`
 `).map((line) => `    ${line}`)
   ].join(`

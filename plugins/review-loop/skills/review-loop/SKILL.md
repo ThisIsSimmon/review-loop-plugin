@@ -2,7 +2,7 @@
 name: review-loop
 description: 実装の完了後に、依頼書の作成 → Codex によるレビュー → 所見の精査と修正 → 差分のみの再レビューを、対応すべき指摘が無くなるまで往復させ、コミットメッセージの作成とコミットの確認（設定により自動コミット）まで行う。「レビューループで」「Codex とレビューを往復して」などの依頼と /review-loop で使う。レビュー 1 回だけの依頼には使わない。
 argument-hint: "[--auto-commit] [--model <model>] [--effort <effort>] <実装依頼または対象の説明>"
-allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/dist/*)
+allowed-tools: Bash(bun ${CLAUDE_PLUGIN_ROOT}/dist/*)
 ---
 
 # Review Loop
@@ -45,7 +45,7 @@ allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/dist/*)
 ### 0. 開始
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/dist/start-run.mjs --task "<依頼の一言要約>"
+bun ${CLAUDE_PLUGIN_ROOT}/dist/start-run.mjs --task "<依頼の一言要約>"
 ```
 
 - 出力の Run ID（`YYYY-MM-DD.HHmmss`）を以降の `--run` に使う。進行中の Run が 1 つだけなら `--run` は省略できる。
@@ -64,7 +64,7 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/start-run.mjs --task "<依頼の一言要約>"
 ### 3. レビュー依頼
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/dist/request-review.mjs --run <run>
+bun ${CLAUDE_PLUGIN_ROOT}/dist/request-review.mjs --run <run>
 ```
 
 - Codex のレビューは数分以上かかることがあるので、バックグラウンドで実行して完了通知を待つ。待つ間に作業ツリーを変えない（レビュー済みの内容と食い違う）。
@@ -104,7 +104,7 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/request-review.mjs --run <run>
 ```
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/dist/record-dispositions.mjs --run <run>
+bun ${CLAUDE_PLUGIN_ROOT}/dist/record-dispositions.mjs --run <run>
 ```
 
 所見が 0 件のときは対応表の代わりに `--none` を付ける。script は全所見に対応が書かれていること、`out_of_scope` の所見が記録先の一覧に「Run ID＋所見 ID」の行として書かれていることを確かめ、検証済みの対応表を標準のパスへ保存してから次の工程を出力する。
@@ -113,18 +113,18 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/record-dispositions.mjs --run <run>
 
 - `fixing`: `addressed` の所見を直す。重大なもの（壊れる・セキュリティ）→ 単純なもの → 構造の変更の順に 1 件ずつ直し、テストと lint を通して工程 3 へ戻る（依頼書は作り直さない）。
 - `ready_to_finish`: 工程 6 へ。
-- `max_rounds`: 最大ラウンドに達した。`addressed` の所見は直すが Codex へは出さず、残った所見と対応を依頼者に報告して判断を仰ぐ（ターンを終えてよい）。依頼者が続行を選んだら `node ${CLAUDE_PLUGIN_ROOT}/dist/request-review.mjs --run <run> --max-rounds <新しい上限>` で再開する。レビュー無しでコミットする判断なら Run を `--abort` し、ループの外で通常どおりコミットする。
+- `max_rounds`: 最大ラウンドに達した。`addressed` の所見は直すが Codex へは出さず、残った所見と対応を依頼者に報告して判断を仰ぐ（ターンを終えてよい）。依頼者が続行を選んだら `bun ${CLAUDE_PLUGIN_ROOT}/dist/request-review.mjs --run <run> --max-rounds <新しい上限>` で再開する。レビュー無しでコミットする判断なら Run を `--abort` し、ループの外で通常どおりコミットする。
 
 ### 6. 完了
 
 1. 下の「コミットメッセージの書き方」に従ってメッセージを書き、`.tmp/review-loop/<run>/commit-message.txt` に保存する。
-2. `node ${CLAUDE_PLUGIN_ROOT}/dist/finish-run.mjs --run <run>` を実行する。script はレビュー済みのスナップショットと作業ツリーが同じことを確かめ、メッセージ・変更ファイル・差分の統計を出して工程を `awaiting_confirmation` にする。レビュー後の変更が範囲外の記録先の末尾への追記だけ（レビュー済みの本文をそのまま先頭に残す）なら通す。それ以外の変更（他のファイル、記録の削除や既存行の書き換え）があれば拒否されるので、`request-review.mjs` で変更分を再レビューしてからやり直す（完了準備・確認待ちからも依頼できる）。
+2. `bun ${CLAUDE_PLUGIN_ROOT}/dist/finish-run.mjs --run <run>` を実行する。script はレビュー済みのスナップショットと作業ツリーが同じことを確かめ、メッセージ・変更ファイル・差分の統計を出して工程を `awaiting_confirmation` にする。レビュー後の変更が範囲外の記録先の末尾への追記だけ（レビュー済みの本文をそのまま先頭に残す）なら通す。それ以外の変更（他のファイル、記録の削除や既存行の書き換え）があれば拒否されるので、`request-review.mjs` で変更分を再レビューしてからやり直す（完了準備・確認待ちからも依頼できる）。
 3. autoCommit が false（既定）: 出力（コミットメッセージ・変更ファイル・差分の統計）を応答の本文に載せて依頼者に見せ、承認を得てから `--commit` を付けて再実行する。承認は文章で尋ねず、選択肢で取る。`AskUserQuestion` を使い、選択肢は「コミットする」と「コミットしない」の 2 つにする（メッセージの修正などの指示は自動で付く自由記述の欄で受ける）。「コミットする」が選ばれたら `--commit` を実行し、「コミットしない」なら確認待ちのまま止めて指示を待つ。選択肢を出せる道具が無い環境では文章で尋ね、承認を待つ間はターンを終えてよい。autoCommit が true: そのまま `--commit` を付けて実行する。
 4. `--commit` は `git add -A` → index の内容とレビュー済みのツリーの照合（`git add -f` 済みの無視ファイルなど、スナップショットに無い内容があれば中止）→ `git commit -F` を行う。リポジトリの git フック（pre-commit など）はそのまま走るので、失敗したら出力を見て直し、変更があれば再レビューしてからやり直す。`checkPushAfterCommit` が true なら、出力にある push の確認結果まで報告する。
 
 ### 7. 後片付け
 
-`.tmp/review-loop/<run>/` の依頼書・プロンプト・結果・対応表・ログは証跡として残す。依頼されたときだけ `node ${CLAUDE_PLUGIN_ROOT}/dist/cleanup-run-files.mjs --run <run>` で消す（進行中の Run は消せない）。
+`.tmp/review-loop/<run>/` の依頼書・プロンプト・結果・対応表・ログは証跡として残す。依頼されたときだけ `bun ${CLAUDE_PLUGIN_ROOT}/dist/cleanup-run-files.mjs --run <run>` で消す（進行中の Run は消せない）。
 
 ## コミットメッセージの書き方
 
@@ -140,8 +140,8 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/record-dispositions.mjs --run <run>
 
 ## 止め方・一時停止・Stop フック
 
-- 中止: `node ${CLAUDE_PLUGIN_ROOT}/dist/finish-run.mjs --run <run> --abort`。作業ツリーは残る。
-- 一時停止: 依頼者に質問して答えを待ちたいときは `node ${CLAUDE_PLUGIN_ROOT}/dist/pause-run.mjs --run <run> --reason "<質問の要約>"` を実行してからターンを終える。次の工程の script を実行すると解除される。
+- 中止: `bun ${CLAUDE_PLUGIN_ROOT}/dist/finish-run.mjs --run <run> --abort`。作業ツリーは残る。
+- 一時停止: 依頼者に質問して答えを待ちたいときは `bun ${CLAUDE_PLUGIN_ROOT}/dist/pause-run.mjs --run <run> --reason "<質問の要約>"` を実行してからターンを終える。次の工程の script を実行すると解除される。
 - プラグインの Stop フック（`stop-guard.mjs`）は、Run の工程が `implementing` / `reviewing` / `triaging` / `fixing` / `ready_to_finish` のままターンを終えようとしたとき、次の工程を理由にして続行させる。バックグラウンドのコマンドが動いている間（Codex のレビュー待ち）、一時停止中、依頼者の判断待ちの工程（`awaiting_confirmation` / `review_failed` / `max_rounds`）では止めてよい。24 時間更新の無い Run は見張らない。
 - Claude Code は Stop フックによる連続の続行を一定回数で打ち切るが、ツールを呼ぶたびに数え直すので、往復の上限は `maxRounds` で守る。
 - Run は開始時のセッション ID（環境変数 `CLAUDE_CODE_SESSION_ID`）を記録し、Stop フックはフック入力の `session_id` と一致する Run だけを見張る（ID が取れなかった Run はすべてのセッションが見張る）。同じリポジトリの別セッションは縛らない。

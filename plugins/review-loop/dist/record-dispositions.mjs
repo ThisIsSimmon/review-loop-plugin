@@ -1,5 +1,6 @@
+// @bun
 // src/commands/record-dispositions.ts
-import { join as join4 } from "node:path";
+import { join as join4 } from "path";
 
 // node_modules/valibot/dist/index.mjs
 var store$4;
@@ -703,19 +704,17 @@ function safeParse(schema, input, config$1) {
 }
 
 // src/lib/state.ts
-import { readdir } from "node:fs/promises";
-import { isAbsolute, join as join3 } from "node:path";
+import { readdir } from "fs/promises";
+import { isAbsolute, join as join3 } from "path";
 
 // src/lib/config.ts
-import { join } from "node:path";
+import { join } from "path";
 
 // src/lib/fs.ts
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 var isNotFoundError = (error) => error instanceof Error && ("code" in error) && error.code === "ENOENT";
 var readTextIfExists = async (path) => {
   try {
-    return await readFile(path, "utf8");
+    return await Bun.file(path).text();
   } catch (error) {
     if (isNotFoundError(error))
       return null;
@@ -723,14 +722,13 @@ var readTextIfExists = async (path) => {
   }
 };
 var writeText = async (path, text) => {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, text, "utf8");
+  await Bun.write(path, text);
 };
 var writeJson = (path, data) => writeText(path, `${JSON.stringify(data, null, "\t")}
 `);
 
 // src/lib/util.ts
-import { dirname as dirname2 } from "node:path";
+import { dirname } from "path";
 var errorMessage = (error) => error instanceof Error ? error.message : String(error);
 var formatIssues = (issues) => issues.map((issue) => {
   const path = getDotPath(issue);
@@ -741,19 +739,19 @@ var parseJsonWith = (schema, text, label) => {
   try {
     data = JSON.parse(text);
   } catch (error) {
-    throw new Error(`${label} を JSON として読めません: ${errorMessage(error)}`);
+    throw new Error(`${label} \u3092 JSON \u3068\u3057\u3066\u8AAD\u3081\u307E\u305B\u3093: ${errorMessage(error)}`);
   }
   const result = safeParse(schema, data);
   if (!result.success) {
-    throw new Error(`${label} の形式が不正です: ${formatIssues(result.issues)}`);
+    throw new Error(`${label} \u306E\u5F62\u5F0F\u304C\u4E0D\u6B63\u3067\u3059: ${formatIssues(result.issues)}`);
   }
   return result.output;
 };
 var scriptCommand = (name) => {
   const entry = process.argv[1];
-  const distDir = entry?.endsWith(".mjs") === true ? dirname2(entry) : "${CLAUDE_PLUGIN_ROOT}/dist";
+  const distDir = entry?.endsWith(".mjs") === true ? dirname(entry) : "${CLAUDE_PLUGIN_ROOT}/dist";
   const path = `${distDir}/${name}.mjs`;
-  return /^[\w@%+=:,./-]+$/.test(path) ? `node ${path}` : `node '${path.replaceAll("'", "'\\''")}'`;
+  return /^[\w@%+=:,./-]+$/.test(path) ? `bun ${path}` : `bun '${path.replaceAll("'", "'\\''")}'`;
 };
 var parseFlags = (args, spec) => {
   const values = new Map;
@@ -770,7 +768,7 @@ var parseFlags = (args, spec) => {
     }
     if (!spec.valueFlags.includes(flag)) {
       throw new Error(`${spec.usage}
-不明な引数: ${flag}`);
+\u4E0D\u660E\u306A\u5F15\u6570: ${flag}`);
     }
     const value = args[index + 1];
     if (value === undefined || value.startsWith("--") || values.has(flag)) {
@@ -785,7 +783,7 @@ var parsePositiveInteger = (value, label) => {
   if (value === undefined)
     return;
   if (!/^\d+$/.test(value) || Number(value) < 1) {
-    throw new Error(`${label} は 1 以上の整数で指定してください: ${value}`);
+    throw new Error(`${label} \u306F 1 \u4EE5\u4E0A\u306E\u6574\u6570\u3067\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044: ${value}`);
   }
   return Number(value);
 };
@@ -796,7 +794,7 @@ var parseBooleanValue = (value, label) => {
     return true;
   if (value === "false")
     return false;
-  throw new Error(`${label} は true か false で指定してください: ${value}`);
+  throw new Error(`${label} \u306F true \u304B false \u3067\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044: ${value}`);
 };
 var runMain = async (main) => {
   try {
@@ -822,7 +820,7 @@ var DEFAULT_CONVENTION_FILES = [
   "CLAUDE.md",
   ".claude/CLAUDE.md"
 ];
-var RepoRelativePathSchema = pipe(string(), minLength(1), check((path) => !path.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(path) && !path.split(/[\\/]/).includes(".."), "リポジトリルートからの相対パスで、.. を含まない形にしてください"));
+var RepoRelativePathSchema = pipe(string(), minLength(1), check((path) => !path.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(path) && !path.split(/[\\/]/).includes(".."), "\u30EA\u30DD\u30B8\u30C8\u30EA\u30EB\u30FC\u30C8\u304B\u3089\u306E\u76F8\u5BFE\u30D1\u30B9\u3067\u3001.. \u3092\u542B\u307E\u306A\u3044\u5F62\u306B\u3057\u3066\u304F\u3060\u3055\u3044"));
 var NonEmptyStringSchema = pipe(string(), minLength(1));
 var ReviewLoopConfigSchema = object({
   model: nullable(NonEmptyStringSchema),
@@ -855,7 +853,7 @@ var ProjectConfigFileSchema = strictObject({
 var applyConfigOverrides = (fileConfig, overrides) => {
   const parsedFile = safeParse(ProjectConfigFileSchema, fileConfig);
   if (!parsedFile.success || Array.isArray(fileConfig)) {
-    throw new Error(`${PROJECT_CONFIG_PATH} の形式が不正です: ${parsedFile.success ? "JSON のオブジェクトにしてください" : formatIssues(parsedFile.issues)}`);
+    throw new Error(`${PROJECT_CONFIG_PATH} \u306E\u5F62\u5F0F\u304C\u4E0D\u6B63\u3067\u3059: ${parsedFile.success ? "JSON \u306E\u30AA\u30D6\u30B8\u30A7\u30AF\u30C8\u306B\u3057\u3066\u304F\u3060\u3055\u3044" : formatIssues(parsedFile.issues)}`);
   }
   const { $schema: _, ...fromFile } = parsedFile.output;
   const defined = Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined));
@@ -865,7 +863,7 @@ var applyConfigOverrides = (fileConfig, overrides) => {
     ...defined
   });
   if (!result.success) {
-    throw new Error(`review-loop の設定が不正です: ${formatIssues(result.issues)}`);
+    throw new Error(`review-loop \u306E\u8A2D\u5B9A\u304C\u4E0D\u6B63\u3067\u3059: ${formatIssues(result.issues)}`);
   }
   return result.output;
 };
@@ -876,7 +874,7 @@ var loadConfig = async (repoRoot, overrides = {}) => {
     try {
       data = JSON.parse(text);
     } catch (error) {
-      throw new Error(`${PROJECT_CONFIG_PATH} を JSON として読めません: ${errorMessage(error)}`);
+      throw new Error(`${PROJECT_CONFIG_PATH} \u3092 JSON \u3068\u3057\u3066\u8AAD\u3081\u307E\u305B\u3093: ${errorMessage(error)}`);
     }
   }
   return applyConfigOverrides(data, overrides);
@@ -892,67 +890,51 @@ var resolveConventionFiles = async (config, exists) => {
   return found;
 };
 var describeConfig = (config) => [
-  `- 設定: モデル ${config.model ?? "Codex 既定"} / effort ${config.reasoningEffort ?? "Codex 既定"} / 最大 ${config.maxRounds} ラウンド / autoCommit ${config.autoCommit} / 打ち切り ${config.timeoutMinutes} 分`,
-  `- lint: ${config.lintCommand ?? "未設定（規約ファイルに従う）"} / テスト: ${config.testCommand ?? "未設定（規約ファイルに従う）"}`,
-  `- 範囲外の記録先: ${config.outOfScopeFile}`
+  `- \u8A2D\u5B9A: \u30E2\u30C7\u30EB ${config.model ?? "Codex \u65E2\u5B9A"} / effort ${config.reasoningEffort ?? "Codex \u65E2\u5B9A"} / \u6700\u5927 ${config.maxRounds} \u30E9\u30A6\u30F3\u30C9 / autoCommit ${config.autoCommit} / \u6253\u3061\u5207\u308A ${config.timeoutMinutes} \u5206`,
+  `- lint: ${config.lintCommand ?? "\u672A\u8A2D\u5B9A\uFF08\u898F\u7D04\u30D5\u30A1\u30A4\u30EB\u306B\u5F93\u3046\uFF09"} / \u30C6\u30B9\u30C8: ${config.testCommand ?? "\u672A\u8A2D\u5B9A\uFF08\u898F\u7D04\u30D5\u30A1\u30A4\u30EB\u306B\u5F93\u3046\uFF09"}`,
+  `- \u7BC4\u56F2\u5916\u306E\u8A18\u9332\u5148: ${config.outOfScopeFile}`
 ];
 
 // src/lib/git.ts
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join as join2 } from "node:path";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join as join2 } from "path";
 
 // src/lib/process.ts
-import { spawn } from "node:child_process";
-var runProcess = (command, args, options) => new Promise((resolve, reject) => {
-  const child = spawn(command, args, {
+var runProcess = async (command, args, options) => {
+  const child = Bun.spawn([command, ...args], {
     cwd: options.cwd,
     env: options.env ?? process.env,
-    stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"]
+    stdin: options.input === undefined ? "ignore" : new TextEncoder().encode(options.input),
+    stdout: "pipe",
+    stderr: "pipe"
   });
-  const stdout = [];
-  const stderr = [];
   let timedOut = false;
-  let settled = false;
-  let timer;
-  let spawned = Promise.resolve();
-  const settle = (fn) => {
-    if (settled)
-      return;
-    settled = true;
-    if (timer)
-      clearTimeout(timer);
-    fn();
-  };
-  child.stdout?.on("data", (chunk) => stdout.push(chunk));
-  child.stderr?.on("data", (chunk) => stderr.push(chunk));
-  child.on("error", (error) => settle(() => reject(error)));
-  child.on("close", (code) => {
-    spawned.then(() => settle(() => resolve({
-      exitCode: code,
-      timedOut,
-      stdout: Buffer.concat(stdout).toString("utf8"),
-      stderr: Buffer.concat(stderr).toString("utf8")
-    })), () => {});
-  });
-  if (options.input !== undefined && child.stdin) {
-    child.stdin.on("error", () => {});
-    child.stdin.end(options.input, "utf8");
+  const timer = options.timeoutMs === undefined ? undefined : setTimeout(() => {
+    timedOut = true;
+    child.kill();
+  }, options.timeoutMs);
+  try {
+    const outputs = Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited
+    ]);
+    if (options.onSpawn) {
+      try {
+        await options.onSpawn(child.pid);
+      } catch (error) {
+        child.kill();
+        outputs.catch(() => {});
+        throw error;
+      }
+    }
+    const [stdout, stderr] = await outputs;
+    return { exitCode: child.exitCode, timedOut, stdout, stderr };
+  } finally {
+    clearTimeout(timer);
   }
-  if (options.timeoutMs !== undefined) {
-    timer = setTimeout(() => {
-      timedOut = true;
-      child.kill();
-    }, options.timeoutMs);
-  }
-  if (options.onSpawn && child.pid !== undefined) {
-    spawned = options.onSpawn(child.pid);
-    spawned.catch((error) => {
-      child.kill();
-      settle(() => reject(error));
-    });
-  }
-});
+};
 
 // src/lib/git.ts
 var GIT_LOCAL_ENV_VARS = new Set([
@@ -987,7 +969,7 @@ var createGitRunner = (cwd, baseEnv = {}) => async (args, env = {}) => {
 var runGitOrThrow = async (git, args, env) => {
   const result = await git(args, env);
   if (result.exitCode !== 0) {
-    throw new Error(`git ${args.join(" ")} が失敗しました（exit ${result.exitCode}）: ${result.stderr.trim()}`);
+    throw new Error(`git ${args.join(" ")} \u304C\u5931\u6557\u3057\u307E\u3057\u305F\uFF08exit ${result.exitCode}\uFF09: ${result.stderr.trim()}`);
   }
   return result.stdout;
 };
@@ -1016,7 +998,7 @@ var hasDiff = async (git, from, to) => {
     return false;
   if (result.exitCode === 1)
     return true;
-  throw new Error(`git diff --quiet ${from} ${to} が失敗しました（exit ${result.exitCode}）: ${result.stderr.trim()}`);
+  throw new Error(`git diff --quiet ${from} ${to} \u304C\u5931\u6557\u3057\u307E\u3057\u305F\uFF08exit ${result.exitCode}\uFF09: ${result.stderr.trim()}`);
 };
 var getDiffStat = async (git, from, to) => (await runGitOrThrow(git, ["diff", "--stat", from, to])).trimEnd();
 var revParse = async (git, ref) => (await runGitOrThrow(git, ["rev-parse", "--verify", ref])).trim();
@@ -1036,7 +1018,7 @@ var readTreeFile = async (git, tree, path) => {
     return result.stdout;
   if (result.exitCode === 128)
     return null;
-  throw new Error(`git cat-file blob ${tree}:${path} が失敗しました（exit ${result.exitCode}）: ${result.stderr.trim()}`);
+  throw new Error(`git cat-file blob ${tree}:${path} \u304C\u5931\u6557\u3057\u307E\u3057\u305F\uFF08exit ${result.exitCode}\uFF09: ${result.stderr.trim()}`);
 };
 var isIgnored = async (git, path) => {
   const result = await git(["check-ignore", "-q", "--no-index", path]);
@@ -1044,7 +1026,7 @@ var isIgnored = async (git, path) => {
     return true;
   if (result.exitCode === 1)
     return false;
-  throw new Error(`git check-ignore ${path} が失敗しました（exit ${result.exitCode}）: ${result.stderr.trim()}`);
+  throw new Error(`git check-ignore ${path} \u304C\u5931\u6557\u3057\u307E\u3057\u305F\uFF08exit ${result.exitCode}\uFF09: ${result.stderr.trim()}`);
 };
 
 // src/lib/state.ts
@@ -1064,16 +1046,16 @@ var RUN_PHASES = [
   "aborted"
 ];
 var PHASE_LABELS = {
-  implementing: "実装中",
-  reviewing: "Codex のレビュー待ち",
-  triaging: "所見の精査待ち",
-  fixing: "指摘への対応中",
-  ready_to_finish: "コミットの準備待ち",
-  awaiting_confirmation: "コミットの確認待ち",
-  review_failed: "レビューの失敗",
-  max_rounds: "ラウンド上限に到達",
-  done: "完了",
-  aborted: "中止"
+  implementing: "\u5B9F\u88C5\u4E2D",
+  reviewing: "Codex \u306E\u30EC\u30D3\u30E5\u30FC\u5F85\u3061",
+  triaging: "\u6240\u898B\u306E\u7CBE\u67FB\u5F85\u3061",
+  fixing: "\u6307\u6458\u3078\u306E\u5BFE\u5FDC\u4E2D",
+  ready_to_finish: "\u30B3\u30DF\u30C3\u30C8\u306E\u6E96\u5099\u5F85\u3061",
+  awaiting_confirmation: "\u30B3\u30DF\u30C3\u30C8\u306E\u78BA\u8A8D\u5F85\u3061",
+  review_failed: "\u30EC\u30D3\u30E5\u30FC\u306E\u5931\u6557",
+  max_rounds: "\u30E9\u30A6\u30F3\u30C9\u4E0A\u9650\u306B\u5230\u9054",
+  done: "\u5B8C\u4E86",
+  aborted: "\u4E2D\u6B62"
 };
 var STOPPABLE_PHASES = new Set([
   "awaiting_confirmation",
@@ -1134,12 +1116,12 @@ var ensureWorkDir = async (workDir) => {
 };
 var readRunState = async (runId, workDir) => {
   if (!RUN_ID_PATTERN.test(runId)) {
-    throw new Error(`Run ID の形式が不正です（YYYY-MM-DD.HHmmss）: ${runId}`);
+    throw new Error(`Run ID \u306E\u5F62\u5F0F\u304C\u4E0D\u6B63\u3067\u3059\uFF08YYYY-MM-DD.HHmmss\uFF09: ${runId}`);
   }
   const text = await readTextIfExists(runFilePath(workDir, runId, STATE_FILE_NAME));
   const display = runFileDisplayPath(runId, STATE_FILE_NAME);
   if (text === null) {
-    throw new Error(`Run ${runId} の状態ファイルがありません: ${display}`);
+    throw new Error(`Run ${runId} \u306E\u72B6\u614B\u30D5\u30A1\u30A4\u30EB\u304C\u3042\u308A\u307E\u305B\u3093: ${display}`);
   }
   return parseJsonWith(RunStateSchema, text, display);
 };
@@ -1171,7 +1153,7 @@ var listRunStates = async (workDir) => {
     try {
       const state = parseJsonWith(RunStateSchema, text, path);
       if (state.runId !== entry.name)
-        throw new Error("Run ID の不一致");
+        throw new Error("Run ID \u306E\u4E0D\u4E00\u81F4");
       listing.states.push(state);
     } catch {
       listing.invalid.push(runFileDisplayPath(entry.name, STATE_FILE_NAME));
@@ -1187,7 +1169,7 @@ var resolveRunState = async (runId, workDir) => {
   }
   const { states, invalid } = await listRunStates(workDir);
   if (invalid.length > 0) {
-    throw new Error(`読めない状態ファイルがあります（${invalid.join(", ")}）。進行中の Run を見落とさないよう、--run <run-id> を明示するか、ファイルを直すか退避してください`);
+    throw new Error(`\u8AAD\u3081\u306A\u3044\u72B6\u614B\u30D5\u30A1\u30A4\u30EB\u304C\u3042\u308A\u307E\u3059\uFF08${invalid.join(", ")}\uFF09\u3002\u9032\u884C\u4E2D\u306E Run \u3092\u898B\u843D\u3068\u3055\u306A\u3044\u3088\u3046\u3001--run <run-id> \u3092\u660E\u793A\u3059\u308B\u304B\u3001\u30D5\u30A1\u30A4\u30EB\u3092\u76F4\u3059\u304B\u9000\u907F\u3057\u3066\u304F\u3060\u3055\u3044`);
   }
   const active = findActiveRuns(states);
   const only = active[0];
@@ -1195,23 +1177,23 @@ var resolveRunState = async (runId, workDir) => {
     return only;
   }
   if (active.length === 0) {
-    throw new Error(`進行中の Run がありません。${scriptCommand("start-run")} で開始するか、--run <run-id> を指定してください`);
+    throw new Error(`\u9032\u884C\u4E2D\u306E Run \u304C\u3042\u308A\u307E\u305B\u3093\u3002${scriptCommand("start-run")} \u3067\u958B\u59CB\u3059\u308B\u304B\u3001--run <run-id> \u3092\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044`);
   }
-  throw new Error(`進行中の Run が複数あります（${active.map((state) => state.runId).join(", ")}）。--run <run-id> で指定してください`);
+  throw new Error(`\u9032\u884C\u4E2D\u306E Run \u304C\u8907\u6570\u3042\u308A\u307E\u3059\uFF08${active.map((state) => state.runId).join(", ")}\uFF09\u3002--run <run-id> \u3067\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044`);
 };
 var parseReasoningEffort = (value) => {
   if (value === undefined)
     return;
   const result = safeParse(picklist(REASONING_EFFORTS), value);
   if (!result.success) {
-    throw new Error(`--effort は ${REASONING_EFFORTS.join(" | ")} のいずれかで指定してください: ${value}`);
+    throw new Error(`--effort \u306F ${REASONING_EFFORTS.join(" | ")} \u306E\u3044\u305A\u308C\u304B\u3067\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044: ${value}`);
   }
   return result.output;
 };
 var resolveWorkspace = async (cwd = process.cwd()) => {
   const root = await findRepoRoot(cwd);
   if (root === null) {
-    throw new Error(`git リポジトリの中で実行してください（現在のディレクトリ: ${cwd}）`);
+    throw new Error(`git \u30EA\u30DD\u30B8\u30C8\u30EA\u306E\u4E2D\u3067\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\uFF08\u73FE\u5728\u306E\u30C7\u30A3\u30EC\u30AF\u30C8\u30EA: ${cwd}\uFF09`);
   }
   return workspaceFor(root);
 };
@@ -1223,13 +1205,13 @@ var FINDING_SEVERITIES = ["critical", "important", "minor"];
 var FINDING_SCOPES = ["change", "pre_existing"];
 var EVIDENCE_KINDS = ["source", "measured", "inferred"];
 var SCOPE_LABELS = {
-  change: "今回の変更",
-  pre_existing: "変更前からの問題"
+  change: "\u4ECA\u56DE\u306E\u5909\u66F4",
+  pre_existing: "\u5909\u66F4\u524D\u304B\u3089\u306E\u554F\u984C"
 };
 var EVIDENCE_LABELS = {
-  source: "ソース確認",
-  measured: "実測",
-  inferred: "推測"
+  source: "\u30BD\u30FC\u30B9\u78BA\u8A8D",
+  measured: "\u5B9F\u6E2C",
+  inferred: "\u63A8\u6E2C"
 };
 var LineNumberSchema = pipe(number(), integer(), minValue(0));
 var CodexFindingSchema = object({
@@ -1286,22 +1268,22 @@ var countBySeverity = (findings) => ({
   important: findings.filter((finding) => finding.severity === "important").length,
   minor: findings.filter((finding) => finding.severity === "minor").length
 });
-var listOrNone = (items) => items.length === 0 ? ["- なし"] : items.map((item) => `- ${item}`);
+var listOrNone = (items) => items.length === 0 ? ["- \u306A\u3057"] : items.map((item) => `- ${item}`);
 var renderReviewResult = (result) => {
   const counts = countBySeverity(result.findings);
   const lines = [
-    `## Codex レビュー結果（Run ${result.runId} / ラウンド ${result.round}）`,
-    `- 判定: ${result.verdict}（所見 ${result.findings.length} 件: critical ${counts.critical} / important ${counts.important} / minor ${counts.minor}）`,
-    `- モデル: ${result.model ?? "Codex 既定"} / effort: ${result.reasoningEffort ?? "Codex 既定"}`,
-    `- 要約: ${result.summary}`
+    `## Codex \u30EC\u30D3\u30E5\u30FC\u7D50\u679C\uFF08Run ${result.runId} / \u30E9\u30A6\u30F3\u30C9 ${result.round}\uFF09`,
+    `- \u5224\u5B9A: ${result.verdict}\uFF08\u6240\u898B ${result.findings.length} \u4EF6: critical ${counts.critical} / important ${counts.important} / minor ${counts.minor}\uFF09`,
+    `- \u30E2\u30C7\u30EB: ${result.model ?? "Codex \u65E2\u5B9A"} / effort: ${result.reasoningEffort ?? "Codex \u65E2\u5B9A"}`,
+    `- \u8981\u7D04: ${result.summary}`
   ];
   if (result.findings.length > 0) {
-    lines.push("", "### 所見");
+    lines.push("", "### \u6240\u898B");
     for (const finding of result.findings) {
-      lines.push("", `#### ${finding.id} [${finding.severity}] ${finding.title}`, `- 対象: ${finding.file}:${finding.line_start}-${finding.line_end}（${SCOPE_LABELS[finding.scope]}）`, `- 内容: ${finding.body}`, `- 推奨: ${finding.recommendation || "なし"}`, `- 根拠の出所: ${EVIDENCE_LABELS[finding.evidence]}`);
+      lines.push("", `#### ${finding.id} [${finding.severity}] ${finding.title}`, `- \u5BFE\u8C61: ${finding.file}:${finding.line_start}-${finding.line_end}\uFF08${SCOPE_LABELS[finding.scope]}\uFF09`, `- \u5185\u5BB9: ${finding.body}`, `- \u63A8\u5968: ${finding.recommendation || "\u306A\u3057"}`, `- \u6839\u62E0\u306E\u51FA\u6240: ${EVIDENCE_LABELS[finding.evidence]}`);
     }
   }
-  lines.push("", "### Codex が実行したテスト", ...listOrNone(result.testsRun), "", "### Codex が確認できなかったこと", ...listOrNone(result.unverified));
+  lines.push("", "### Codex \u304C\u5B9F\u884C\u3057\u305F\u30C6\u30B9\u30C8", ...listOrNone(result.testsRun), "", "### Codex \u304C\u78BA\u8A8D\u3067\u304D\u306A\u304B\u3063\u305F\u3053\u3068", ...listOrNone(result.unverified));
   return lines.join(`
 `);
 };
@@ -1309,9 +1291,9 @@ var renderReviewResult = (result) => {
 // src/lib/dispositions.ts
 var DISPOSITIONS = ["addressed", "rejected", "out_of_scope"];
 var DISPOSITION_LABELS = {
-  addressed: "対応（修正）",
-  rejected: "却下",
-  out_of_scope: "範囲外として記録"
+  addressed: "\u5BFE\u5FDC\uFF08\u4FEE\u6B63\uFF09",
+  rejected: "\u5374\u4E0B",
+  out_of_scope: "\u7BC4\u56F2\u5916\u3068\u3057\u3066\u8A18\u9332"
 };
 var DispositionItemSchema = object({
   id: pipe(string(), regex(FINDING_ID_PATTERN)),
@@ -1333,28 +1315,28 @@ var hasOutOfScopeRecord = (todoText, runId, findingId) => {
 var validateDispositions = (input) => {
   const problems = [];
   if (input.dispositions.round !== input.round) {
-    problems.push(`round が ${input.round} ではありません: ${input.dispositions.round}`);
+    problems.push(`round \u304C ${input.round} \u3067\u306F\u3042\u308A\u307E\u305B\u3093: ${input.dispositions.round}`);
   }
   const findingIds = new Set(input.findings.map((finding) => finding.id));
   const seen = new Set;
   for (const item of input.dispositions.items) {
     if (!findingIds.has(item.id)) {
-      problems.push(`所見に無い ID です: ${item.id}`);
+      problems.push(`\u6240\u898B\u306B\u7121\u3044 ID \u3067\u3059: ${item.id}`);
     }
     if (seen.has(item.id)) {
-      problems.push(`ID が重複しています: ${item.id}`);
+      problems.push(`ID \u304C\u91CD\u8907\u3057\u3066\u3044\u307E\u3059: ${item.id}`);
     }
     seen.add(item.id);
     if (item.disposition !== "addressed" && item.note.trim() === "") {
-      problems.push(`${item.id}: ${DISPOSITION_LABELS[item.disposition]} には note（根拠または記録の要約）が必要です`);
+      problems.push(`${item.id}: ${DISPOSITION_LABELS[item.disposition]} \u306B\u306F note\uFF08\u6839\u62E0\u307E\u305F\u306F\u8A18\u9332\u306E\u8981\u7D04\uFF09\u304C\u5FC5\u8981\u3067\u3059`);
     }
     if (item.disposition === "out_of_scope" && !hasOutOfScopeRecord(input.outOfScopeTodoText, input.runId, item.id)) {
-      problems.push(`${item.id}: out_of_scope の所見は先に ${input.outOfScopeFile} の一覧へ、発見元「${formatOutOfScopeSource(input.runId, item.id)}」の行として追記してください`);
+      problems.push(`${item.id}: out_of_scope \u306E\u6240\u898B\u306F\u5148\u306B ${input.outOfScopeFile} \u306E\u4E00\u89A7\u3078\u3001\u767A\u898B\u5143\u300C${formatOutOfScopeSource(input.runId, item.id)}\u300D\u306E\u884C\u3068\u3057\u3066\u8FFD\u8A18\u3057\u3066\u304F\u3060\u3055\u3044`);
     }
   }
   for (const id of findingIds) {
     if (!seen.has(id)) {
-      problems.push(`対応が書かれていない所見があります: ${id}`);
+      problems.push(`\u5BFE\u5FDC\u304C\u66F8\u304B\u308C\u3066\u3044\u306A\u3044\u6240\u898B\u304C\u3042\u308A\u307E\u3059: ${id}`);
     }
   }
   return problems;
@@ -1364,44 +1346,44 @@ var countDispositions = (items) => ({
   rejected: items.filter((item) => item.disposition === "rejected").length,
   out_of_scope: items.filter((item) => item.disposition === "out_of_scope").length
 });
-var checkNoneAllowed = (findingCount, dispositionsPath) => findingCount > 0 ? `所見が ${findingCount} 件あるため --none は使えません。対応表を ${dispositionsPath} に書いてください` : null;
+var checkNoneAllowed = (findingCount, dispositionsPath) => findingCount > 0 ? `\u6240\u898B\u304C ${findingCount} \u4EF6\u3042\u308B\u305F\u3081 --none \u306F\u4F7F\u3048\u307E\u305B\u3093\u3002\u5BFE\u5FDC\u8868\u3092 ${dispositionsPath} \u306B\u66F8\u3044\u3066\u304F\u3060\u3055\u3044` : null;
 var decideNextPhase = (input) => {
   if (countDispositions(input.items).addressed === 0) {
     return "ready_to_finish";
   }
   return input.round >= input.maxRounds ? "max_rounds" : "fixing";
 };
-var OUT_OF_SCOPE_TEMPLATE = `# 範囲外の問題の記録
+var OUT_OF_SCOPE_TEMPLATE = `# \u7BC4\u56F2\u5916\u306E\u554F\u984C\u306E\u8A18\u9332
 
-作業の途中で見つけた、依頼の完了に必須でない不具合・改善案の記録。直さずにここへ書き、採否は後で決める。
+\u4F5C\u696D\u306E\u9014\u4E2D\u3067\u898B\u3064\u3051\u305F\u3001\u4F9D\u983C\u306E\u5B8C\u4E86\u306B\u5FC5\u9808\u3067\u306A\u3044\u4E0D\u5177\u5408\u30FB\u6539\u5584\u6848\u306E\u8A18\u9332\u3002\u76F4\u3055\u305A\u306B\u3053\u3053\u3078\u66F8\u304D\u3001\u63A1\u5426\u306F\u5F8C\u3067\u6C7A\u3081\u308B\u3002
 
-## 記入の決まり
+## \u8A18\u5165\u306E\u6C7A\u307E\u308A
 
-- 1 件を 1 行で、一覧の末尾に追記する。既存の行は書き換えない（状態の更新は別のコミットで行う）。
-- ID は \`OOS-<連番>\`。日付は記録した日（YYYY-MM-DD）。
-- 発見元: Codex の所見なら \`review-loop <Run ID> <所見 ID>\`、ループ中に自分で見つけたものは \`review-loop <Run ID> self\`。
-- 対象はファイルと行（\`path:line\`）。状態は「未着手」「対応済み」「見送り」のいずれか。
+- 1 \u4EF6\u3092 1 \u884C\u3067\u3001\u4E00\u89A7\u306E\u672B\u5C3E\u306B\u8FFD\u8A18\u3059\u308B\u3002\u65E2\u5B58\u306E\u884C\u306F\u66F8\u304D\u63DB\u3048\u306A\u3044\uFF08\u72B6\u614B\u306E\u66F4\u65B0\u306F\u5225\u306E\u30B3\u30DF\u30C3\u30C8\u3067\u884C\u3046\uFF09\u3002
+- ID \u306F \`OOS-<\u9023\u756A>\`\u3002\u65E5\u4ED8\u306F\u8A18\u9332\u3057\u305F\u65E5\uFF08YYYY-MM-DD\uFF09\u3002
+- \u767A\u898B\u5143: Codex \u306E\u6240\u898B\u306A\u3089 \`review-loop <Run ID> <\u6240\u898B ID>\`\u3001\u30EB\u30FC\u30D7\u4E2D\u306B\u81EA\u5206\u3067\u898B\u3064\u3051\u305F\u3082\u306E\u306F \`review-loop <Run ID> self\`\u3002
+- \u5BFE\u8C61\u306F\u30D5\u30A1\u30A4\u30EB\u3068\u884C\uFF08\`path:line\`\uFF09\u3002\u72B6\u614B\u306F\u300C\u672A\u7740\u624B\u300D\u300C\u5BFE\u5FDC\u6E08\u307F\u300D\u300C\u898B\u9001\u308A\u300D\u306E\u3044\u305A\u308C\u304B\u3002
 
-## 一覧
+## \u4E00\u89A7
 
-| ID | 日付 | 発見元 | 対象 | 内容 | 範囲外とした理由 | 状態 |
+| ID | \u65E5\u4ED8 | \u767A\u898B\u5143 | \u5BFE\u8C61 | \u5185\u5BB9 | \u7BC4\u56F2\u5916\u3068\u3057\u305F\u7406\u7531 | \u72B6\u614B |
 | --- | --- | --- | --- | --- | --- | --- |
 `;
 
 // src/commands/record-dispositions.ts
-var usage = () => `Usage: ${scriptCommand("record-dispositions")} [--run <run-id>] [--file <対応表のパス>] [--none]`;
+var usage = () => `Usage: ${scriptCommand("record-dispositions")} [--run <run-id>] [--file <\u5BFE\u5FDC\u8868\u306E\u30D1\u30B9>] [--none]`;
 var describeChecks = (state) => {
   const commands = [state.config.testCommand, state.config.lintCommand].filter((command) => command !== null);
-  return commands.length === 0 ? "影響するテストと lint（規約ファイルの決まりに従う）" : commands.map((command) => `\`${command}\``).join(" と ");
+  return commands.length === 0 ? "\u5F71\u97FF\u3059\u308B\u30C6\u30B9\u30C8\u3068 lint\uFF08\u898F\u7D04\u30D5\u30A1\u30A4\u30EB\u306E\u6C7A\u307E\u308A\u306B\u5F93\u3046\uFF09" : commands.map((command) => `\`${command}\``).join(" \u3068 ");
 };
 var renderNextStepAfterTriage = (phase, state) => {
   switch (phase) {
     case "fixing":
-      return `次の工程: addressed の所見を修正し、${describeChecks(state)}を通してから ${scriptCommand("request-review")} --run ${state.runId} を再実行する（ラウンド ${state.round + 1}。依頼書は作り直さない）`;
+      return `\u6B21\u306E\u5DE5\u7A0B: addressed \u306E\u6240\u898B\u3092\u4FEE\u6B63\u3057\u3001${describeChecks(state)}\u3092\u901A\u3057\u3066\u304B\u3089 ${scriptCommand("request-review")} --run ${state.runId} \u3092\u518D\u5B9F\u884C\u3059\u308B\uFF08\u30E9\u30A6\u30F3\u30C9 ${state.round + 1}\u3002\u4F9D\u983C\u66F8\u306F\u4F5C\u308A\u76F4\u3055\u306A\u3044\uFF09`;
     case "ready_to_finish":
-      return `対応すべき所見はありません。次の工程: review-loop スキルの「コミットメッセージの書き方」に従ってメッセージを書いて ${runFileDisplayPath(state.runId, "commit-message.txt")} に保存し、${scriptCommand("finish-run")} --run ${state.runId} を実行する`;
+      return `\u5BFE\u5FDC\u3059\u3079\u304D\u6240\u898B\u306F\u3042\u308A\u307E\u305B\u3093\u3002\u6B21\u306E\u5DE5\u7A0B: review-loop \u30B9\u30AD\u30EB\u306E\u300C\u30B3\u30DF\u30C3\u30C8\u30E1\u30C3\u30BB\u30FC\u30B8\u306E\u66F8\u304D\u65B9\u300D\u306B\u5F93\u3063\u3066\u30E1\u30C3\u30BB\u30FC\u30B8\u3092\u66F8\u3044\u3066 ${runFileDisplayPath(state.runId, "commit-message.txt")} \u306B\u4FDD\u5B58\u3057\u3001${scriptCommand("finish-run")} --run ${state.runId} \u3092\u5B9F\u884C\u3059\u308B`;
     case "max_rounds":
-      return `最大ラウンド数 ${state.config.maxRounds} に達しました。addressed の所見は修正しますが Codex へのレビューは出さず、残った所見と対応を依頼者に報告して判断を仰いでください（ターンを終えてよいです）`;
+      return `\u6700\u5927\u30E9\u30A6\u30F3\u30C9\u6570 ${state.config.maxRounds} \u306B\u9054\u3057\u307E\u3057\u305F\u3002addressed \u306E\u6240\u898B\u306F\u4FEE\u6B63\u3057\u307E\u3059\u304C Codex \u3078\u306E\u30EC\u30D3\u30E5\u30FC\u306F\u51FA\u3055\u305A\u3001\u6B8B\u3063\u305F\u6240\u898B\u3068\u5BFE\u5FDC\u3092\u4F9D\u983C\u8005\u306B\u5831\u544A\u3057\u3066\u5224\u65AD\u3092\u4EF0\u3044\u3067\u304F\u3060\u3055\u3044\uFF08\u30BF\u30FC\u30F3\u3092\u7D42\u3048\u3066\u3088\u3044\u3067\u3059\uFF09`;
   }
 };
 var main = async (args) => {
@@ -1413,13 +1395,13 @@ var main = async (args) => {
   const { root, workDir } = await resolveWorkspace();
   const state = await resolveRunState(values.get("--run"), workDir);
   if (state.phase !== "triaging") {
-    throw new Error(`Run ${state.runId} は「${PHASE_LABELS[state.phase]}」（${state.phase}）のため、対応表を記録できません。所見の精査待ちのときだけ記録できます`);
+    throw new Error(`Run ${state.runId} \u306F\u300C${PHASE_LABELS[state.phase]}\u300D\uFF08${state.phase}\uFF09\u306E\u305F\u3081\u3001\u5BFE\u5FDC\u8868\u3092\u8A18\u9332\u3067\u304D\u307E\u305B\u3093\u3002\u6240\u898B\u306E\u7CBE\u67FB\u5F85\u3061\u306E\u3068\u304D\u3060\u3051\u8A18\u9332\u3067\u304D\u307E\u3059`);
   }
   const round = state.round;
   const resultName = roundFileName(round, "result.json");
   const resultText = await readTextIfExists(runFilePath(workDir, state.runId, resultName));
   if (resultText === null) {
-    throw new Error(`レビュー結果がありません: ${runFileDisplayPath(state.runId, resultName)}`);
+    throw new Error(`\u30EC\u30D3\u30E5\u30FC\u7D50\u679C\u304C\u3042\u308A\u307E\u305B\u3093: ${runFileDisplayPath(state.runId, resultName)}`);
   }
   const result = parseJsonWith(ReviewResultSchema, resultText, runFileDisplayPath(state.runId, resultName));
   const dispositionsName = roundFileName(round, "dispositions.json");
@@ -1437,7 +1419,7 @@ var main = async (args) => {
     const path = fileArg === undefined ? runFilePath(workDir, state.runId, dispositionsName) : resolveRepoPath(root, fileArg);
     const text = await readTextIfExists(path);
     if (text === null) {
-      throw new Error(`対応表がありません: ${path}。所見 0 件なら --none を付けてください`);
+      throw new Error(`\u5BFE\u5FDC\u8868\u304C\u3042\u308A\u307E\u305B\u3093: ${path}\u3002\u6240\u898B 0 \u4EF6\u306A\u3089 --none \u3092\u4ED8\u3051\u3066\u304F\u3060\u3055\u3044`);
     }
     dispositions = parseJsonWith(DispositionsFileSchema, text, path);
   }
@@ -1461,9 +1443,9 @@ var main = async (args) => {
   if (problems.length > 0) {
     throw new Error([
       ...createdTemplate ? [
-        `範囲外の記録ファイルが無かったので、雛形から ${outOfScopeFile} を作りました。記入の決まりに従って一覧へ行を追記してから再実行してください。`
+        `\u7BC4\u56F2\u5916\u306E\u8A18\u9332\u30D5\u30A1\u30A4\u30EB\u304C\u7121\u304B\u3063\u305F\u306E\u3067\u3001\u96DB\u5F62\u304B\u3089 ${outOfScopeFile} \u3092\u4F5C\u308A\u307E\u3057\u305F\u3002\u8A18\u5165\u306E\u6C7A\u307E\u308A\u306B\u5F93\u3063\u3066\u4E00\u89A7\u3078\u884C\u3092\u8FFD\u8A18\u3057\u3066\u304B\u3089\u518D\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002`
       ] : [],
-      "対応表に問題があります:",
+      "\u5BFE\u5FDC\u8868\u306B\u554F\u984C\u304C\u3042\u308A\u307E\u3059:",
       ...problems.map((problem) => `- ${problem}`)
     ].join(`
 `));
@@ -1476,7 +1458,7 @@ var main = async (args) => {
   });
   const next = await writeRunState({ ...state, phase: nextPhase }, workDir);
   const counts = countDispositions(dispositions.items);
-  console.log(`対応表を記録しました（Run ${state.runId} / ラウンド ${round} / ${dispositionsDisplay}）: 対応 ${counts.addressed} / 却下 ${counts.rejected} / 範囲外 ${counts.out_of_scope}`);
+  console.log(`\u5BFE\u5FDC\u8868\u3092\u8A18\u9332\u3057\u307E\u3057\u305F\uFF08Run ${state.runId} / \u30E9\u30A6\u30F3\u30C9 ${round} / ${dispositionsDisplay}\uFF09: \u5BFE\u5FDC ${counts.addressed} / \u5374\u4E0B ${counts.rejected} / \u7BC4\u56F2\u5916 ${counts.out_of_scope}`);
   console.log(renderNextStepAfterTriage(nextPhase, next));
 };
 

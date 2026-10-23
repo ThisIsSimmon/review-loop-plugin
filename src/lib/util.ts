@@ -37,7 +37,7 @@ export const parseJsonWith = <TSchema extends v.GenericSchema>(
 /**
  * 次の工程として LLM に示すコマンド。ビルド済みの `dist/<name>.mjs` から実行されていれば同じディレクトリの
  * 絶対パスを示す（プラグインのキャッシュの場所は環境ごとに違うので、決め打ちせずに実行中のファイルから求める）。
- * パスは空白などを含むときだけ引用符で囲む（権限の allow 規則 `Bash(node <パス> *)` と同じ形に保つ）。
+ * パスは空白などを含むときだけ引用符で囲む（権限の allow 規則 `Bash(bun <パス> *)` と同じ形に保つ）。
  */
 export const scriptCommand = (name: string): string => {
 	const entry = process.argv[1];
@@ -47,8 +47,8 @@ export const scriptCommand = (name: string): string => {
 			: '${CLAUDE_PLUGIN_ROOT}/dist';
 	const path = `${distDir}/${name}.mjs`;
 	return /^[\w@%+=:,./-]+$/.test(path)
-		? `node ${path}`
-		: `node '${path.replaceAll("'", "'\\''")}'`;
+		? `bun ${path}`
+		: `bun '${path.replaceAll("'", "'\\''")}'`;
 };
 
 export type FlagSpec = {

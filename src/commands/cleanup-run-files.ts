@@ -1,7 +1,7 @@
 /**
  * Run の作業用ファイル（`.tmp/review-loop/<run>/`）を消す。証跡として残すのが既定で、依頼されたときだけ使う。
  *
- *   node dist/cleanup-run-files.mjs --run <run-id>
+ *   bun dist/cleanup-run-files.mjs --run <run-id>
  *
  * 進行中の Run は消さない（Stop フックと次の工程が状態ファイルを読むため）。終わった Run（done / aborted）か、
  * 状態ファイルが無い・読めないディレクトリだけを消す。

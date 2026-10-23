@@ -1,7 +1,7 @@
 /**
  * 所見への対応表を検証し、次の工程（修正へ戻る / 完了へ進む / ラウンド上限）を決める。
  *
- *   node dist/record-dispositions.mjs [--run <run-id>] [--file <対応表のパス>] [--none]
+ *   bun dist/record-dispositions.mjs [--run <run-id>] [--file <対応表のパス>] [--none]
  *
  * `--none` は所見が 0 件のときだけ使える。out_of_scope の所見は、先に範囲外の記録ファイル（設定の outOfScopeFile）の
  * 一覧へ「review-loop <Run ID> <所見 ID>」の行として追記されていることを確かめる。記録ファイルが無ければ雛形から作る。

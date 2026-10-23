@@ -49,7 +49,7 @@ describe('parseFlags', () => {
 describe('scriptCommand', () => {
 	test('dist の外から呼ばれたときはプラグインのルートを変数のまま示し、引用符で囲む', () => {
 		expect(scriptCommand('start-run')).toBe(
-			"node '${CLAUDE_PLUGIN_ROOT}/dist/start-run.mjs'",
+			"bun '${CLAUDE_PLUGIN_ROOT}/dist/start-run.mjs'",
 		);
 	});
 });

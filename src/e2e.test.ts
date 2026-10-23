@@ -41,15 +41,15 @@ else
 fi
 `;
 
-describe('dist の 1 往復（Node で実行）', () => {
+describe('dist の 1 往復（Bun で実行）', () => {
 	let repo: string;
 	let fakeBin: string;
 	let fakeCodexDir: string;
 	let env: NodeJS.ProcessEnv;
 
-	const node = async (name: string, args: string[] = [], input?: string) => {
+	const bun = async (name: string, args: string[] = [], input?: string) => {
 		const result = await runProcess(
-			'node',
+			'bun',
 			[join(DIST, `${name}.mjs`), ...args],
 			{ cwd: repo, env, input },
 		);
@@ -89,24 +89,24 @@ describe('dist の 1 往復（Node で実行）', () => {
 	});
 
 	test('開始 → レビュー → 対応表 → 修正 → 再レビュー → 確認待ち → コミット', async () => {
-		const started = await node('start-run', ['--task', '割り算を足す']);
+		const started = await bun('start-run', ['--task', '割り算を足す']);
 		expect(started.exitCode).toBe(0);
 		const runId = /Run (\d{4}-\d{2}-\d{2}\.\d{6})/.exec(started.output)?.[1];
 		if (!runId) throw new Error(started.output);
-		expect(started.output).toContain(`node ${DIST}/request-review.mjs --run`);
+		expect(started.output).toContain(`bun ${DIST}/request-review.mjs --run`);
 		// 進行中の Run があるうちは二重に始めない
-		expect((await node('start-run', ['--task', 'x'])).exitCode).toBe(1);
+		expect((await bun('start-run', ['--task', 'x'])).exitCode).toBe(1);
 
 		await writeFile(
 			join(repo, 'calc.js'),
 			'export const div = (a, b) => a / b;\n',
 		);
 		const guardInput = JSON.stringify({ session_id: 'session-e2e', cwd: repo });
-		const guard = await node('stop-guard', [], guardInput);
+		const guard = await bun('stop-guard', [], guardInput);
 		expect(guard.exitCode).toBe(0);
 		expect(JSON.parse(guard.stdout).decision).toBe('block');
 		// 別セッションの Run は縛らない
-		const other = await node(
+		const other = await bun(
 			'stop-guard',
 			[],
 			JSON.stringify({ session_id: 'session-other', cwd: repo }),
@@ -114,7 +114,7 @@ describe('dist の 1 往復（Node で実行）', () => {
 		expect(other.stdout).toBe('');
 
 		await writeFile(runFile(runId, '1.request.md'), '# レビュー依頼: 割り算\n');
-		const review1 = await node('request-review');
+		const review1 = await bun('request-review');
 		expect(review1.exitCode).toBe(0);
 		expect(review1.output).toContain('#### R1-1 [important] 0 で割る');
 		const prompt1 = await readFile(join(fakeCodexDir, 'prompt-0.md'), 'utf8');
@@ -135,7 +135,7 @@ describe('dist の 1 往復（Node で実行）', () => {
 			}),
 		);
 		// 記録先が無ければ雛形を作り、行を追記するよう求める
-		const firstRecord = await node('record-dispositions');
+		const firstRecord = await bun('record-dispositions');
 		expect(firstRecord.exitCode).toBe(1);
 		expect(firstRecord.output).toContain('雛形から docs/out-of-scope-todo.md');
 		const todoPath = join(repo, 'docs', 'out-of-scope-todo.md');
@@ -143,7 +143,7 @@ describe('dist の 1 往復（Node で実行）', () => {
 			todoPath,
 			`${await readFile(todoPath, 'utf8')}| OOS-1 | 2026-10-20 | review-loop ${runId} R1-2 | README.md:1 | 古い | 変更前から | 未着手 |\n`,
 		);
-		const recorded = await node('record-dispositions');
+		const recorded = await bun('record-dispositions');
 		expect(recorded.exitCode).toBe(0);
 		expect(recorded.output).toContain('次の工程: addressed の所見を修正し');
 
@@ -151,26 +151,26 @@ describe('dist の 1 往復（Node で実行）', () => {
 			join(repo, 'calc.js'),
 			"export const div = (a, b) => {\n\tif (b === 0) throw new Error('0');\n\treturn a / b;\n};\n",
 		);
-		const review2 = await node('request-review');
+		const review2 = await bun('request-review');
 		expect(review2.exitCode).toBe(0);
 		const prompt2 = await readFile(join(fakeCodexDir, 'prompt-1.md'), 'utf8');
 		expect(prompt2).toContain('- R1-1 [important] 0 で割る（calc.js:1-1）→ 対応（修正）');
-		expect((await node('record-dispositions', ['--none'])).exitCode).toBe(0);
+		expect((await bun('record-dispositions', ['--none'])).exitCode).toBe(0);
 
 		// 状態ファイルの工程に応じて、まだ止めさせない
-		expect(JSON.parse((await node('stop-guard', [], guardInput)).stdout).reason).toContain(
+		expect(JSON.parse((await bun('stop-guard', [], guardInput)).stdout).reason).toContain(
 			'commit-message.txt',
 		);
 		await writeFile(
 			runFile(runId, 'commit-message.txt'),
 			'feat: 割り算を足す\n\n0 での割り算は例外にする。\n',
 		);
-		const finished = await node('finish-run');
+		const finished = await bun('finish-run');
 		expect(finished.exitCode).toBe(0);
 		expect(finished.output).toContain('コミットの確認待ちにしました');
-		expect((await node('stop-guard', [], guardInput)).stdout).toBe('');
+		expect((await bun('stop-guard', [], guardInput)).stdout).toBe('');
 
-		const committed = await node('finish-run', ['--commit']);
+		const committed = await bun('finish-run', ['--commit']);
 		expect(committed.exitCode).toBe(0);
 		expect((await git(['log', '-1', '--format=%s'])).stdout.trim()).toBe(
 			'feat: 割り算を足す',
@@ -183,7 +183,7 @@ describe('dist の 1 往復（Node で実行）', () => {
 		).toEqual(['calc.js', 'docs/out-of-scope-todo.md']);
 		expect((await git(['status', '--short'])).stdout).toBe('');
 
-		const cleaned = await node('cleanup-run-files', ['--run', runId]);
+		const cleaned = await bun('cleanup-run-files', ['--run', runId]);
 		expect(cleaned.exitCode).toBe(0);
 		await expect(access(runFile(runId, 'state.json'))).rejects.toThrow();
 	}, 30_000);
@@ -192,13 +192,13 @@ describe('dist の 1 往復（Node で実行）', () => {
 		const outside = await mkdtemp(join(tmpdir(), 'review-loop-outside-'));
 		try {
 			const guard = await runProcess(
-				'node',
+				'bun',
 				[join(DIST, 'stop-guard.mjs')],
 				{ cwd: outside, env, input: JSON.stringify({ cwd: outside }) },
 			);
 			expect(guard).toMatchObject({ exitCode: 0, stdout: '' });
 			const start = await runProcess(
-				'node',
+				'bun',
 				[join(DIST, 'start-run.mjs'), '--task', 'x'],
 				{ cwd: outside, env },
 			);

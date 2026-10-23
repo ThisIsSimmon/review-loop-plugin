@@ -2,7 +2,7 @@
  * Run を一時停止する。依頼者へ質問する・判断を仰ぐために LLM がターンを終えたいときに使う。
  * 一時停止中は Stop フックが止めるのを許す。次にどの script が状態を書いても解除される。
  *
- *   node dist/pause-run.mjs [--run <run-id>] [--reason "<理由>"]
+ *   bun dist/pause-run.mjs [--run <run-id>] [--reason "<理由>"]
  */
 import {
 	PHASE_LABELS,

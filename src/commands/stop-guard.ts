@@ -1,5 +1,5 @@
 /**
- * Claude Code の Stop フック（hooks/hooks.json から node で呼ぶ）。review-loop の Run が途中（LLM の作業待ちの工程）の
+ * Claude Code の Stop フック（hooks/hooks.json から bun で呼ぶ）。review-loop の Run が途中（LLM の作業待ちの工程）の
  * ままターンを終えようとしたら、次の工程を理由にして続行させる。判断は純粋関数 decideStopGuard に寄せ、main は入出力だけを行う。
  *
  * - 標準入力: Claude Code が渡す JSON。`cwd` のリポジトリの `.tmp/review-loop/` を見る（git リポジトリの外なら何もしない）。

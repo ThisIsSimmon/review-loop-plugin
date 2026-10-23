@@ -1,6 +1,6 @@
 /**
  * src/bin の各エントリを、valibot と埋め込みの文面ごと 1 ファイルの ESM にまとめ、plugins/review-loop/dist に出す。
- * 利用先のプロジェクトには Node と Codex CLI だけがあればよい（node_modules も Bun も要らない）。
+ * 利用先のプロジェクトには Bun と Codex CLI だけがあればよい（node_modules は要らない）。
  */
 import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -18,7 +18,7 @@ await rm(outdir, { recursive: true, force: true });
 const result = await Bun.build({
 	entrypoints,
 	outdir,
-	target: 'node',
+	target: 'bun',
 	format: 'esm',
 	naming: '[name].mjs',
 	minify: false,

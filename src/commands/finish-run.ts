@@ -3,7 +3,7 @@
  * 出して確認待ちにする。`--commit` で `git add -A` → `git commit -F` を行う（リポジトリの git フックはそのまま走る）。
  * autoCommit=false の Run では、確認待ちを経ずに `--commit` はできない。
  *
- *   node dist/finish-run.mjs [--run <run-id>] [--message-file <path>] [--commit] [--abort]
+ *   bun dist/finish-run.mjs [--run <run-id>] [--message-file <path>] [--commit] [--abort]
  *
  * レビュー後の変更が範囲外の記録ファイルへの追記だけなら（対応表の検証がその追記を要求するため、レビュー後に
  * 必ず起きる）レビュー済みとして扱う。それ以外の変更は request-review での再レビューを求める。

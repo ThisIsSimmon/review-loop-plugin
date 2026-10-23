@@ -1,7 +1,7 @@
 /**
  * review-loop の Run を開始する（`.tmp/review-loop/<run>/state.json` を作る）。
  *
- *   node dist/start-run.mjs --task "<一言>" [--model <model>] [--effort <effort>] [--max-rounds <n>] [--auto-commit <true|false>] [--timeout-minutes <n>]
+ *   bun dist/start-run.mjs --task "<一言>" [--model <model>] [--effort <effort>] [--max-rounds <n>] [--auto-commit <true|false>] [--timeout-minutes <n>]
  *
  * 進行中の Run があるうちは新しい Run を作らない（Stop フックがどの Run を見張るか曖昧になる）。
  * 開始時点の未コミット変更は、レビューにもコミットにも含まれるので一覧して警告する。

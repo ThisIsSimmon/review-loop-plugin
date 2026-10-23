@@ -12,15 +12,15 @@ Claude Code が実装し、Codex CLI がレビューし、Claude Code が所見�
 | スキル | `review-loop:write-review-request` | 変更の意図・検証状況をまとめたレビュー依頼書を書く。単体でも使える |
 | スキル | `review-loop:perform-code-review` | レビュアー側の手順・観点・重大度。review-loop では本文が Codex へのレビュー依頼に埋め込まれる。単体でも使える |
 | フック | Stop | Run が途中のままターンを終えようとしたら、次の工程を示して続行させる |
-| script | `dist/*.mjs` | 工程の進行・スナップショット・Codex の呼び出し・対応表の検証・コミット。Node だけで動く 1 ファイルずつの ESM（依存も同梱） |
+| script | `dist/*.mjs` | 工程の進行・スナップショット・Codex の呼び出し・対応表の検証・コミット。Bun で動く 1 ファイルずつの ESM（依存も同梱） |
 
 ## 前提
 
-- Node.js 20 以上（`node` が PATH にあること。Stop フックも `node` で動く）
+- [Bun](https://bun.sh) 1.3 以上（`bun` が PATH にあること。Stop フックも `bun` で動く）
 - [Codex CLI](https://github.com/openai/codex)（`codex` が PATH にあり、`codex login` 済み）
 - git リポジトリの中で使う
 
-Bun や `node_modules` は利用先には要らない。
+Node.js や `node_modules` は利用先には要らない。
 
 ## 導入
 
@@ -53,7 +53,7 @@ claude plugin install review-loop@review-loop
 {
 	"permissions": {
 		"allow": [
-			"Bash(node */.claude/plugins/cache/review-loop/review-loop/*/dist/*)"
+			"Bash(bun */.claude/plugins/cache/review-loop/review-loop/*/dist/*)"
 		]
 	}
 }
@@ -147,7 +147,7 @@ npx skills add ThisIsSimmon/review-loop-plugin --skill perform-code-review
 
 ## 開発
 
-開発には [Bun](https://bun.sh) を使う（テストは `bun:test`、ビルドは `Bun.build`）。配布物の `plugins/review-loop/dist/` はビルドしてコミットする。
+開発にも Bun を使う（テストは `bun:test`、ビルドは `Bun.build`）。配布物の `plugins/review-loop/dist/` はビルドしてコミットする。
 
 ```bash
 bun install
@@ -157,7 +157,7 @@ bun install
 bun run check
 ```
 
-`check` は `plugin.json` と `marketplace.json` の `version` が一致しているかを確かめたうえで型検査・テスト・ビルドを行い、ビルド結果がコミット済みの `dist/` と同じことまで確かめる。ソースは `src/`（`bin/` が各 script の入口、`commands/` が各コマンド、`lib/` が共通部分）、Codex に渡す文面とスキーマは `src/assets/`。`src/e2e.test.ts` はビルド済みの `dist/` を Node で実行し、偽の `codex` で 1 往復を通す。
+`check` は `plugin.json` と `marketplace.json` の `version` が一致しているかを確かめたうえで型検査・テスト・ビルドを行い、ビルド結果がコミット済みの `dist/` と同じことまで確かめる。ソースは `src/`（`bin/` が各 script の入口、`commands/` が各コマンド、`lib/` が共通部分）、Codex に渡す文面とスキーマは `src/assets/`。`src/e2e.test.ts` はビルド済みの `dist/` を Bun で実行し、偽の `codex` で 1 往復を通す。
 
 手元のリポジトリをマーケットプレイスとして試すには:
 

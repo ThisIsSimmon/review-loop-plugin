@@ -11,6 +11,7 @@ Claude Code が実装し、Codex CLI がレビューし、Claude Code が所見�
 | スキル | `review-loop:review-loop` | ループ全体の手順。`/review-loop:review-loop <依頼>` か「レビューループで〜」で使う |
 | スキル | `review-loop:write-review-request` | 変更の意図・検証状況をまとめたレビュー依頼書を書く。単体でも使える |
 | スキル | `review-loop:perform-code-review` | レビュアー側の手順・観点・重大度。review-loop では本文が Codex へのレビュー依頼に埋め込まれる。単体でも使える |
+| スキル | `review-loop:doctor` | 導入の診断（Bun・Codex・git・設定・権限の allow・lint とテスト・残った Run）と試運転の案内。`/review-loop:doctor` で使う |
 | フック | Stop | Run が途中のままターンを終えようとしたら、次の工程を示して続行させる |
 | script | `dist/*.mjs` | 工程の進行・スナップショット・Codex の呼び出し・対応表の検証・コミット。Bun で動く 1 ファイルずつの ESM（依存も同梱） |
 
@@ -101,6 +102,16 @@ script はプラグインのキャッシュ（`~/.claude/plugins/cache/review-lo
 `model`・`reasoningEffort`・`maxRounds`・`autoCommit`・`timeoutMinutes` は、依頼文の `--model` などで Run ごとに上書きできる。設定は Run の開始時に読み、状態ファイルに保存するので、途中で設定ファイルを書き換えても進行中の Run には効かない。
 
 範囲外の記録先は、1 件 1 行の Markdown の表で、`| OOS-<連番> |` で始まる行の「発見元」の欄に `review-loop <Run ID> <所見 ID>` を書く形（雛形に記入の決まりがある）。この形の行があれば、既存のファイルもそのまま使える。
+
+### 5. 診断と試運転
+
+```text
+/review-loop:doctor
+```
+
+Bun の版・Codex CLI とログイン・git（HEAD があるか）・設定ファイル・権限の allow・lint とテストのコマンド・残った Run を確かめ、`[OK]` / `[注意]` / `[NG]` で一覧にする（Codex にレビューは出さない）。`--run-commands` を付けると `lintCommand`・`testCommand` を実際に実行して確かめる。script を直接 `bun <dist の場所>/doctor.mjs` で実行してもよく、NG があれば終了コード 1。
+
+Stop フックが効くか、ループの途中で権限の確認が出ないかは、Claude Code の中で回さないと確かめられない。NG が無ければ、doctor スキルが使い捨てのリポジトリでの試運転（`--effort low --max-rounds 2`）を案内する。
 
 ## 使い方
 

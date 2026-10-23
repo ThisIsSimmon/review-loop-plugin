@@ -1,6 +1,6 @@
 {
 	"name": "review-loop",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "実装 → Codex レビュー → 精査・修正 → 差分のみの再レビューを、対応すべき指摘が無くなるまで往復させ、コミットの確認まで行う。Stop フックで途中で止まらないようにする",
 	"author": {
 		"name": "ThisIsSimmon",

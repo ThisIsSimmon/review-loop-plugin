@@ -1,5 +1,5 @@
 /**
- * ビルド済みの dist/*.mjs を Node で実行し、一時リポジトリで 1 往復を通す（`bun run build` の後に実行する）。
+ * ビルド済みの dist/*.mjs を Bun で実行し、一時リポジトリで 1 往復を通す（`bun run build` の後に実行する）。
  * codex は PATH 上の偽物に置き換え、ラウンド 1 は所見 2 件、ラウンド 2 は所見 0 件を返させる。
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
@@ -207,5 +207,130 @@ describe('dist の 1 往復（Bun で実行）', () => {
 		} finally {
 			await rm(outside, { recursive: true, force: true });
 		}
+	});
+});
+
+describe('dist の doctor（Bun で実行）', () => {
+	let base: string;
+	let repo: string;
+	let env: NodeJS.ProcessEnv;
+
+	const doctor = (
+		args: string[] = [],
+		cwd = repo,
+		extraEnv: Record<string, string> = {},
+	) =>
+		runProcess('bun', [join(DIST, 'doctor.mjs'), ...args], {
+			cwd,
+			env: { ...env, ...extraEnv },
+		});
+	const writeRepoFile = async (path: string, text: string) => {
+		await mkdir(join(repo, path, '..'), { recursive: true });
+		await writeFile(join(repo, path), text);
+	};
+
+	beforeAll(async () => {
+		base = await mkdtemp(join(tmpdir(), 'review-loop-doctor-'));
+		repo = join(base, 'repo');
+		const fakeBin = join(base, 'bin');
+		await mkdir(repo);
+		await mkdir(fakeBin);
+		// doctor が呼ぶのは --version と login status だけ。FAKE_CODEX_BROKEN で --version を失敗させる
+		await writeFile(
+			join(fakeBin, 'codex'),
+			[
+				'#!/bin/sh',
+				'if [ "$1" = "--version" ]; then',
+				'  if [ -n "$FAKE_CODEX_BROKEN" ]; then echo "dyld: broken" >&2; exit 134; fi',
+				'  echo "codex-cli 9.9.9"',
+				'else echo "Logged in"; fi',
+				'',
+			].join('\n'),
+		);
+		await chmod(join(fakeBin, 'codex'), 0o755);
+		env = {
+			...process.env,
+			...TEST_GIT_ENV,
+			PATH: `${fakeBin}:${process.env.PATH}`,
+			// 開発機の ~/.claude/settings.json の allow に左右されないようにする
+			CLAUDE_CONFIG_DIR: join(base, 'claude-config'),
+		};
+		const git = (args: string[]) => runProcess('git', args, { cwd: repo, env });
+		await git(['init', '-q', '-b', 'main']);
+		await writeFile(join(repo, 'README.md'), '# doctor\n');
+		await git(['add', '-A']);
+		await git(['commit', '-q', '-m', 'init']);
+	});
+
+	afterAll(async () => {
+		await rm(base, { recursive: true, force: true });
+	});
+
+	test('allow が無ければ注意、足せば OK になり、どちらも終了コード 0', async () => {
+		const before = await doctor();
+		expect(before.exitCode).toBe(0);
+		expect(before.stdout).toContain('[OK]   Codex CLI: codex-cli 9.9.9');
+		expect(before.stdout).toContain('[注意] 権限の allow');
+
+		await writeRepoFile(
+			'.claude/settings.local.json',
+			JSON.stringify({ permissions: { allow: [`Bash(bun ${DIST}/*)`] } }),
+		);
+		const after = await doctor();
+		expect(after.exitCode).toBe(0);
+		expect(after.stdout).toContain(`[OK]   権限の allow: Bash(bun ${DIST}/*)`);
+		expect(after.stdout).toContain('結果: NG 0 件 / 注意 0 件');
+	});
+
+	test('allow があっても、読めない設定ファイルがあれば注意にして直し方を示す', async () => {
+		await writeRepoFile('.claude/settings.json', '{"permissions": {"allow": [],}}');
+		const result = await doctor();
+		expect(result.stdout).toContain('[注意] 権限の allow: Bash(bun ');
+		// git が返すルートは macOS では /private/var/... になるので、末尾だけ比べる
+		expect(result.stdout).toMatch(
+			/→ JSON の書き間違い（末尾のカンマ・引用符の閉じ忘れなど）を直す: \S*\/repo\/\.claude\/settings\.json\n/,
+		);
+		await rm(join(repo, '.claude', 'settings.json'));
+	});
+
+	test('codex --version が失敗したら NG にし、ログインは確かめない', async () => {
+		const result = await doctor([], repo, { FAKE_CODEX_BROKEN: '1' });
+		expect(result.exitCode).toBe(1);
+		expect(result.stdout).toContain(
+			'[NG]   Codex CLI: codex --version が失敗しました（exit 134）: dyld: broken',
+		);
+		expect(result.stdout).toContain('→ codex を入れ直すか更新する');
+		expect(result.stdout).not.toContain('Codex のログイン');
+	});
+
+	test('--run-commands で lint とテストを実行し、失敗したら NG で終了コード 1', async () => {
+		await writeRepoFile(
+			'.claude/review-loop.json',
+			JSON.stringify({ lintCommand: 'echo lint-ng; exit 2', testCommand: 'true' }),
+		);
+		const listed = await doctor();
+		expect(listed.exitCode).toBe(0);
+		expect(listed.stdout).toContain('実行はしていません');
+
+		const ran = await doctor(['--run-commands']);
+		expect(ran.exitCode).toBe(1);
+		expect(ran.stdout).toContain('[NG]   lint: echo lint-ng; exit 2（exit 2）');
+		expect(ran.stdout).toContain('    lint-ng');
+		expect(ran.stdout).toContain('[OK]   テスト: true（成功）');
+	});
+
+	test('設定ファイルが不正なら NG にし、lint とテストは確かめない', async () => {
+		await writeRepoFile('.claude/review-loop.json', '{"maxRound": 3}');
+		const result = await doctor();
+		expect(result.exitCode).toBe(1);
+		expect(result.stdout).toContain('[NG]   設定: .claude/review-loop.json の形式が不正です');
+		expect(result.stdout).not.toContain('lint:');
+	});
+
+	test('git リポジトリの外では NG にして、リポジトリの項目は飛ばす', async () => {
+		const result = await doctor([], base);
+		expect(result.exitCode).toBe(1);
+		expect(result.stdout).toContain('[NG]   git: git リポジトリの外です');
+		expect(result.stdout).not.toContain('残っている Run');
 	});
 });

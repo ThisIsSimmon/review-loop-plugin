@@ -109,9 +109,27 @@ script はプラグインのキャッシュ（`~/.claude/plugins/cache/review-lo
 /review-loop:doctor
 ```
 
-Bun の版・Codex CLI とログイン・git（HEAD があるか）・設定ファイル・権限の allow・lint とテストのコマンド・残った Run を確かめ、`[OK]` / `[注意]` / `[NG]` で一覧にする（Codex にレビューは出さない）。`--run-commands` を付けると `lintCommand`・`testCommand` を実際に実行して確かめる。script を直接 `bun <dist の場所>/doctor.mjs` で実行してもよく、NG があれば終了コード 1。
+Bun のバージョン・Codex CLI とログイン・git（HEAD があるか）・設定ファイル・権限の allow・lint とテストのコマンド・残った Run を確かめ、`[OK]` / `[注意]` / `[NG]` で一覧にする（Codex にレビューは出さない）。`--run-commands` を付けると `lintCommand`・`testCommand` を実際に実行して確かめる。script を直接 `bun <dist の場所>/doctor.mjs` で実行してもよく、NG があれば終了コード 1。
 
 Stop フックが効くか、ループの途中で権限の確認が出ないかは、Claude Code の中で回さないと確かめられない。NG が無ければ、doctor スキルが使い捨てのリポジトリでの試運転（`--effort low --max-rounds 2`）を案内する。
+
+### 更新
+
+新しいバージョンが出たら、端末で次の 2 つを実行する（Claude Code の中の `/plugin` は引数を付けても設定画面が開くだけ）。まずマーケットプレイスの写しを最新にする。これはどのディレクトリで実行しても同じ。
+
+```bash
+claude plugin marketplace update review-loop
+```
+
+次にプラグインを入れ替える。`--scope` は入れたときと同じにし、`project` / `local` で入れたなら、入れたプロジェクトのディレクトリで実行する（既定は `user`）。
+
+```bash
+claude plugin update review-loop@review-loop --scope project
+```
+
+実行したら Claude Code を再起動する。どのスコープで・どのプロジェクトに入れたかは `claude plugin list`（プロジェクトのパスまで見るなら `~/.claude/plugins/installed_plugins.json`）で分かる。設定画面から更新する場合も、マーケットプレイス → プラグインの順に更新する。
+
+プラグイン本体はスコープに関係なく `~/.claude/plugins/cache/review-loop/review-loop/<バージョン>/` に置かれ、スコープで変わるのはどこで有効になるかだけ。更新のあとは `/review-loop:doctor` で動くかを確かめる。
 
 ## 使い方
 

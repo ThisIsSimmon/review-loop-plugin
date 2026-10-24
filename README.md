@@ -44,7 +44,7 @@ claude plugin marketplace add ThisIsSimmon/review-loop-plugin
 claude plugin install review-loop@review-loop
 ```
 
-プロジェクトごとに入れたいときは `--scope project`（`.claude/settings.json` に書かれ、チームで共有される）か `--scope local` を付ける。インストール後は Claude Code を再起動するか `/reload-plugins` を実行する。
+プロジェクトごとに入れたいときは `--scope project`（`.claude/settings.json` に「このプロジェクトで有効」と書かれ、リポジトリで共有される。本体は各自のインストールが要る。[チームの人がクローンしたとき](#チームの人がクローンしたとき)）か `--scope local` を付ける。インストール後は Claude Code を再起動するか `/reload-plugins` を実行する。
 
 ### 2. 権限の allow（各プロジェクト）
 
@@ -112,6 +112,26 @@ script はプラグインのキャッシュ（`~/.claude/plugins/cache/review-lo
 Bun のバージョン・Codex CLI とログイン・git（HEAD があるか）・設定ファイル・権限の allow・lint とテストのコマンド・残った Run を確かめ、`[OK]` / `[注意]` / `[NG]` で一覧にする（Codex にレビューは出さない）。`--run-commands` を付けると `lintCommand`・`testCommand` を実際に実行して確かめる。script を直接 `bun <dist の場所>/doctor.mjs` で実行してもよく、NG があれば終了コード 1。
 
 Stop フックが効くか、ループの途中で権限の確認が出ないかは、Claude Code の中で回さないと確かめられない。NG が無ければ、doctor スキルが使い捨てのリポジトリでの試運転（`--effort low --max-rounds 2`）を案内する。
+
+### チームの人がクローンしたとき
+
+`--scope project` で入れたリポジトリには、`.claude/settings.json` の `enabledPlugins`（`"review-loop@review-loop": true`）と、手順 2〜4 の allow・`.gitignore`・`.claude/review-loop.json` が入っている。ただしプラグイン本体は入っておらず、クローンしただけでは使えない（有効の設定はあるが、本体が各自の `~/.claude/plugins/cache/` に無い）。クローンした人がやるのは次の 3 つだけ。
+
+1. 「前提」の Bun と Codex CLI を入れ、`codex login` する
+2. マーケットプレイスを追加し（各自のユーザー設定に入る）、そのリポジトリのディレクトリで project スコープでインストールする
+
+   ```bash
+   claude plugin marketplace add ThisIsSimmon/review-loop-plugin
+   ```
+
+   ```bash
+   claude plugin install review-loop@review-loop --scope project
+   ```
+
+   Claude Code v2.1.292 以上なら、`claude plugin install review-loop --marketplace ThisIsSimmon/review-loop-plugin --scope project` の 1 つで両方を済ませられる。
+3. Claude Code を再起動し、`/review-loop:doctor` で確かめる
+
+手順 2〜4 の設定はリポジトリから届くので、やり直さなくてよい。リポジトリを最初に信頼する（ワークスペースの信頼ダイアログに答える）までは、プロジェクトの設定にあるプラグインは読み込まれない。
 
 ### 更新
 
